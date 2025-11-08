@@ -1,0 +1,662 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Camera, Users, QrCode, ClipboardList, Plus, Check, Trash2, Download, Upload, BarChart3 } from 'lucide-react';
+
+const BasketballLocal = () => {
+  const [view, setView] = useState('menu');
+  const [players, setPlayers] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [newPlayer, setNewPlayer] = useState({ name: '', number: '', team: '' });
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  // Cargar datos al inicio
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Guardar datos automáticamente
+  useEffect(() => {
+    if (players.length > 0 || sessions.length > 0) {
+      saveData();
+    }
+  }, [players, sessions]);
+
+  const loadData = () => {
+    try {
+      const savedPlayers = localStorage.getItem('bb_players_local');
+      const savedSessions = localStorage.getItem('bb_sessions_local');
+      
+      if (savedPlayers) setPlayers(JSON.parse(savedPlayers));
+      if (savedSessions) setSessions(JSON.parse(savedSessions));
+    } catch (error) {
+      console.log('Iniciando con datos vacíos');
+    }
+  };
+
+  const saveData = () => {
+    try {
+      localStorage.setItem('bb_players_local', JSON.stringify(players));
+      localStorage.setItem('bb_sessions_local', JSON.stringify(sessions));
+    } catch (error) {
+      console.error('Error guardando datos:', error);
+    }
+  };
+
+  const addPlayer = () => {
+    if (!newPlayer.name || !newPlayer.number) {
+      alert('Por favor completa nombre y número');
+      return;
+    }
+
+    // Verificar si el número ya existe
+    if (players.find(p => p.number === newPlayer.number)) {
+      alert('Ya existe un jugador con ese número');
+      return;
+    }
+
+    const player = {
+      id: Date.now().toString(),
+      ...newPlayer,
+      createdAt: new Date().toISOString()
+    };
+
+    setPlayers([...players, player]);
+    setNewPlayer({ name: '', number: '', team: '' });
+    alert('✓ Jugador agregado exitosamente');
+  };
+
+  const deletePlayer = (id) => {
+    if (confirm('¿Eliminar este jugador? Se mantendrá su historial de asistencia.')) {
+      setPlayers(players.filter(p => p.id !== id));
+    }
+  };
+
+  const startSession = () => {
+    if (players.length === 0) {
+      alert('Primero debes agregar jugadores');
+      setView('players');
+      return;
+    }
+
+    const session = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      attendance: []
+    };
+    setCurrentSession(session);
+    setView('scanner');
+  };
+
+  const markAttendance = (playerId) => {
+    if (!currentSession) return;
+    
+    const player = players.find(p => p.id === playerId);
+    if (!player) {
+      alert('Jugador no encontrado');
+      return;
+    }
+
+    if (currentSession.attendance.includes(playerId)) {
+      alert(`${player.name} ya está registrado en esta sesión`);
+      return;
+    }
+
+    const updated = {
+      ...currentSession,
+      attendance: [...currentSession.attendance, playerId]
+    };
+    setCurrentSession(updated);
+    
+    // Vibración para feedback (si está disponible)
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
+    }
+    
+    alert(`✓ ${player.name} (#${player.number}) - Asistencia registrada`);
+  };
+
+  const endSession = () => {
+    if (!currentSession || currentSession.attendance.length === 0) {
+      alert('No hay asistencias registradas');
+      return;
+    }
+    
+    setSessions([...sessions, currentSession]);
+    setCurrentSession(null);
+    stopCamera();
+    setView('menu');
+    alert(`✓ Sesión guardada: ${currentSession.attendance.length} jugadores presentes`);
+  };
+
+  const manualEntry = () => {
+    const number = prompt('Ingresa el número del jugador:');
+    if (!number) return;
+    
+    const player = players.find(p => p.number === number.trim());
+    if (player) {
+      markAttendance(player.id);
+    } else {
+      alert(`Jugador #${number} no encontrado`);
+    }
+  };
+
+  const generateQR = (playerId) => {
+    const qrData = `BB_PLAYER_${playerId}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
+  };
+
+  const downloadQRs = () => {
+    if (players.length === 0) {
+      alert('No hay jugadores para generar códigos QR');
+      return;
+    }
+    
+    players.forEach((player, index) => {
+      setTimeout(() => {
+        const link = document.createElement('a');
+        link.href = generateQR(player.id);
+        link.download = `QR_${player.number}_${player.name.replace(/\s/g, '_')}.png`;
+        link.click();
+      }, index * 500); // Delay para evitar problemas con el navegador
+    });
+    
+    alert(`Descargando ${players.length} códigos QR...`);
+  };
+
+  const exportData = () => {
+    const data = {
+      players,
+      sessions,
+      exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `asistencia_basketball_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    alert('✓ Datos exportados exitosamente');
+  };
+
+  const importData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (data.players && data.sessions) {
+          if (confirm(`¿Importar ${data.players.length} jugadores y ${data.sessions.length} sesiones? Esto REEMPLAZARÁ todos los datos actuales.`)) {
+            setPlayers(data.players);
+            setSessions(data.sessions);
+            alert('✓ Datos importados exitosamente');
+          }
+        } else {
+          alert('❌ Archivo inválido');
+        }
+      } catch (error) {
+        alert('❌ Error al importar: archivo inválido');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
+
+  const clearAllData = () => {
+    if (confirm('⚠️ ¿ELIMINAR TODOS LOS DATOS? Esta acción NO se puede deshacer. Se recomienda exportar primero.')) {
+      if (confirm('¿Estás completamente seguro? Se perderán todos los jugadores y sesiones.')) {
+        setPlayers([]);
+        setSessions([]);
+        setCurrentSession(null);
+        localStorage.removeItem('bb_players_local');
+        localStorage.removeItem('bb_sessions_local');
+        alert('✓ Todos los datos han sido eliminados');
+        setView('menu');
+      }
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+        setScanning(true);
+      }
+    } catch (error) {
+      alert('Error al acceder a la cámara. Usa entrada manual.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setScanning(false);
+  };
+
+  // Calcular estadísticas
+  const getPlayerStats = (playerId) => {
+    const attended = sessions.filter(s => s.attendance.includes(playerId)).length;
+    const total = sessions.length;
+    const percentage = total > 0 ? Math.round((attended / total) * 100) : 0;
+    return { attended, total, percentage };
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+          
+          {/* Header */}
+          <div className="bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white">
+            <h1 className="text-3xl font-bold flex items-center gap-3">
+              🏀 Asistencia Basketball
+            </h1>
+            <p className="text-orange-100 mt-1">Sistema sin conexión - Datos guardados localmente</p>
+          </div>
+
+          {/* Menu Principal */}
+          {view === 'menu' && (
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <button
+                  onClick={() => setView('players')}
+                  className="p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
+                >
+                  <Users size={48} />
+                  <span className="text-xl font-semibold">Gestionar Jugadores</span>
+                  <span className="text-sm opacity-90">{players.length} jugadores</span>
+                </button>
+
+                <button
+                  onClick={startSession}
+                  className="p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
+                >
+                  <Camera size={48} />
+                  <span className="text-xl font-semibold">Tomar Asistencia</span>
+                  <span className="text-sm opacity-90">Nueva sesión</span>
+                </button>
+
+                <button
+                  onClick={() => setView('qrcodes')}
+                  className="p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
+                >
+                  <QrCode size={48} />
+                  <span className="text-xl font-semibold">Códigos QR</span>
+                  <span className="text-sm opacity-90">Ver e imprimir</span>
+                </button>
+
+                <button
+                  onClick={() => setView('history')}
+                  className="p-6 bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
+                >
+                  <ClipboardList size={48} />
+                  <span className="text-xl font-semibold">Historial</span>
+                  <span className="text-sm opacity-90">{sessions.length} sesiones</span>
+                </button>
+              </div>
+
+              {/* Botones de gestión */}
+              <div className="space-y-3">
+                <button
+                  onClick={() => setView('stats')}
+                  className="w-full p-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg flex items-center justify-center gap-2 transition"
+                >
+                  <BarChart3 size={20} />
+                  Ver Estadísticas
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={exportData} className="p-3 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center justify-center gap-2 transition">
+                    <Download size={20} />
+                    Exportar
+                  </button>
+                  <label className="p-3 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center justify-center gap-2 cursor-pointer transition">
+                    <Upload size={20} />
+                    Importar
+                    <input type="file" accept=".json" onChange={importData} className="hidden" />
+                  </label>
+                </div>
+
+                <button 
+                  onClick={clearAllData}
+                  className="w-full p-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg flex items-center justify-center gap-2 transition"
+                >
+                  <Trash2 size={20} />
+                  Eliminar Todos los Datos
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Gestión de Jugadores */}
+          {view === 'players' && (
+            <div className="p-6">
+              <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
+                ← Volver al menú
+              </button>
+
+              <div className="bg-blue-50 p-4 rounded-xl mb-4">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Plus size={24} />
+                  Agregar Jugador
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nombre completo *"
+                    value={newPlayer.name}
+                    onChange={(e) => setNewPlayer({...newPlayer, name: e.target.value})}
+                    className="p-3 border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Número *"
+                    value={newPlayer.number}
+                    onChange={(e) => setNewPlayer({...newPlayer, number: e.target.value})}
+                    className="p-3 border rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Equipo (opcional)"
+                    value={newPlayer.team}
+                    onChange={(e) => setNewPlayer({...newPlayer, team: e.target.value})}
+                    className="p-3 border rounded-lg"
+                  />
+                </div>
+                <button onClick={addPlayer} className="mt-3 w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">
+                  Agregar Jugador
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {players.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Users size={64} className="mx-auto mb-4 opacity-30" />
+                    <p className="text-lg">No hay jugadores aún</p>
+                    <p className="text-sm">Agrega el primero usando el formulario arriba</p>
+                  </div>
+                ) : (
+                  players.map(player => {
+                    const stats = getPlayerStats(player.id);
+                    return (
+                      <div key={player.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                        <div className="flex-1">
+                          <div className="font-semibold text-lg">#{player.number} - {player.name}</div>
+                          {player.team && <div className="text-sm text-gray-600">{player.team}</div>}
+                          {sessions.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Asistencia: {stats.attended}/{stats.total} ({stats.percentage}%)
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          onClick={() => deletePlayer(player.id)} 
+                          className="text-red-600 hover:bg-red-50 p-2 rounded transition"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Escáner QR */}
+          {view === 'scanner' && (
+            <div className="p-6">
+              <div className="mb-4 flex justify-between items-center">
+                <button 
+                  onClick={() => { stopCamera(); setView('menu'); }} 
+                  className="text-red-600 hover:underline font-semibold"
+                >
+                  ✕ Cancelar
+                </button>
+                <button 
+                  onClick={endSession} 
+                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold"
+                >
+                  Finalizar Sesión
+                </button>
+              </div>
+
+              <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-xl mb-4 border-2 border-green-200">
+                <div className="text-lg font-semibold mb-2">📅 Sesión Actual</div>
+                <div className="text-sm text-gray-600">
+                  {new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {new Date().toLocaleTimeString('es-ES')}
+                </div>
+                <div className="text-3xl font-bold text-green-600 mt-2">
+                  {currentSession?.attendance.length || 0} / {players.length} presentes
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {players.length > 0 && Math.round(((currentSession?.attendance.length || 0) / players.length) * 100)}% del equipo
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <button 
+                  onClick={startCamera} 
+                  className="w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 font-semibold text-lg"
+                >
+                  <Camera size={24} />
+                  {scanning ? 'Escaneando...' : 'Iniciar Escáner QR'}
+                </button>
+
+                <button 
+                  onClick={manualEntry} 
+                  className="w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700 font-semibold text-lg"
+                >
+                  Entrada Manual (por número)
+                </button>
+              </div>
+
+              {scanning && (
+                <div className="mt-4 relative">
+                  <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl" />
+                  <div className="absolute inset-0 border-4 border-green-500 rounded-xl pointer-events-none"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-2 border-white rounded-lg"></div>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <h3 className="font-semibold mb-2 text-lg">✓ Presentes en esta sesión:</h3>
+                <div className="space-y-2">
+                  {currentSession?.attendance.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>Aún no hay asistencias registradas</p>
+                      <p className="text-sm mt-1">Escanea códigos QR o usa entrada manual</p>
+                    </div>
+                  ) : (
+                    currentSession?.attendance.map(id => {
+                      const player = players.find(p => p.id === id);
+                      return player ? (
+                        <div key={id} className="p-3 bg-green-50 rounded-lg flex items-center gap-3 border-l-4 border-green-500">
+                          <Check size={24} className="text-green-600 flex-shrink-0" />
+                          <div>
+                            <div className="font-semibold">#{player.number} - {player.name}</div>
+                            {player.team && <div className="text-sm text-gray-600">{player.team}</div>}
+                          </div>
+                        </div>
+                      ) : null;
+                    })
+                  )}
+                </div>
+
+                {/* Ausentes */}
+                {currentSession && currentSession.attendance.length > 0 && currentSession.attendance.length < players.length && (
+                  <div className="mt-6">
+                    <h3 className="font-semibold mb-2 text-lg text-gray-600">✗ Ausentes:</h3>
+                    <div className="space-y-2">
+                      {players
+                        .filter(p => !currentSession.attendance.includes(p.id))
+                        .map(player => (
+                          <div key={player.id} className="p-3 bg-gray-50 rounded-lg opacity-60">
+                            <div className="font-semibold">#{player.number} - {player.name}</div>
+                            {player.team && <div className="text-sm text-gray-600">{player.team}</div>}
+                          </div>
+                        ))
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Códigos QR */}
+          {view === 'qrcodes' && (
+            <div className="p-6">
+              <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
+                ← Volver al menú
+              </button>
+
+              {players.length > 0 && (
+                <button 
+                  onClick={downloadQRs} 
+                  className="w-full mb-4 bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 font-semibold"
+                >
+                  <Download size={20} />
+                  Descargar Todos los QR ({players.length})
+                </button>
+              )}
+
+              {players.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <QrCode size={64} className="mx-auto mb-4 opacity-30" />
+                  <p className="text-lg">No hay códigos QR</p>
+                  <p className="text-sm">Primero agrega jugadores en "Gestionar Jugadores"</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {players.map(player => (
+                    <div key={player.id} className="border-2 border-gray-200 rounded-xl p-4 text-center bg-white shadow-lg hover:shadow-xl transition">
+                      <img src={generateQR(player.id)} alt={player.name} className="w-full rounded-lg mb-3" />
+                      <div className="mt-2 font-bold text-xl">#{player.number}</div>
+                      <div className="text-lg">{player.name}</div>
+                      {player.team && <div className="text-sm text-gray-600 mt-1">{player.team}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Historial */}
+          {view === 'history' && (
+            <div className="p-6">
+              <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
+                ← Volver al menú
+              </button>
+
+              {sessions.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <ClipboardList size={64} className="mx-auto mb-4 opacity-30" />
+                  <p className="text-lg">No hay sesiones registradas</p>
+                  <p className="text-sm">Toma tu primera asistencia desde el menú principal</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sessions.slice().reverse().map(session => (
+                    <div key={session.id} className="border-2 border-gray-200 rounded-xl p-4 bg-gradient-to-r from-gray-50 to-blue-50 hover:shadow-lg transition">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="font-bold text-lg">
+                            {new Date(session.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {new Date(session.date).toLocaleTimeString('es-ES')}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-green-600">{session.attendance.length}</div>
+                          <div className="text-xs text-gray-600">presentes</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {session.attendance.map(id => {
+                          const player = players.find(p => p.id === id);
+                          return player ? (
+                            <span key={id} className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              #{player.number} {player.name}
+                            </span>
+                          ) : (
+                            <span key={id} className="inline-block bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">
+                              Jugador eliminado
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Estadísticas */}
+          {view === 'stats' && (
+            <div className="p-6">
+              <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
+                ← Volver al menú
+              </button>
+
+              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                <BarChart3 size={28} />
+                Estadísticas de Asistencia
+              </h2>
+
+              {sessions.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="text-lg">No hay datos suficientes</p>
+                  <p className="text-sm">Registra algunas sesiones para ver estadísticas</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {players.map(player => {
+                    const stats = getPlayerStats(player.id);
+                    return (
+                      <div key={player.id} className="border rounded-xl p-4 bg-gray-50">
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <div className="font-bold text-lg">#{player.number} - {player.name}</div>
+                            {player.team && <div className="text-sm text-gray-600">{player.team}</div>}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-3xl font-bold text-blue-600">{stats.percentage}%</div>
+                            <div className="text-xs text-gray-600">{stats.attended}/{stats.total}</div>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-3">
+                          <div 
+                            className="bg-blue-600 h-3 rounded-full transition-all"
+                            style={{width: `${stats.percentage}%`}}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BasketballLocal;
