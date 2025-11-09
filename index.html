@@ -3,90 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Sistema de asistencia para equipos de basketball integrado con Google Sheets">
-    <meta name="theme-color" content="#ea580c">
-    <title>🏀 Basketball Attendance</title>
-    
-    <!-- React -->
+    <title>🏀 Asistencia Basketball</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel para JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- jsQR para escaneo QR -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-    
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        
-        * {
-            box-sizing: border-box;
-        }
-        
-        /* Animaciones suaves */
-        .fade-in {
-            animation: fadeIn 0.3s ease-in;
-        }
-        
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        /* Estilos para el escáner */
-        #qr-video {
-            max-width: 100%;
-            border-radius: 12px;
-        }
-        
-        /* PWA */
-        @media (display-mode: standalone) {
-            body {
-                padding-top: env(safe-area-inset-top);
-                padding-bottom: env(safe-area-inset-bottom);
-            }
-        }
-    </style>
 </head>
 <body>
     <div id="root"></div>
     
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const { Camera, Users, QrCode, ClipboardList, Plus, Check, Trash2, Download, BarChart3, RefreshCw, Wifi, WifiOff } = lucide;
+        const { Camera, Users, QrCode, ClipboardList, Plus, Check, Download, BarChart3, RefreshCw, Wifi, WifiOff, MapPin, FileText } = lucide;
 
-        const BasketballAttendance = () => {
+        const App = () => {
           const [view, setView] = useState('menu');
           const [players, setPlayers] = useState([]);
           const [sessions, setSessions] = useState([]);
           const [currentSession, setCurrentSession] = useState(null);
-          const [newPlayer, setNewPlayer] = useState({ name: '', number: '', team: '' });
+          const [newPlayer, setNewPlayer] = useState({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
+          const [sessionInfo, setSessionInfo] = useState({ type: 'Entrenamiento', location: '', notes: '' });
           const [scanning, setScanning] = useState(false);
           const [connected, setConnected] = useState(false);
           const [loading, setLoading] = useState(false);
-          const [config, setConfig] = useState({
-            sheetId: '',
-            apiKey: ''
-          });
+          const [config, setConfig] = useState({ sheetId: '', apiKey: '' });
           const [showConfig, setShowConfig] = useState(false);
           
           const videoRef = useRef(null);
@@ -94,279 +36,164 @@
           const canvasRef = useRef(null);
           const scanIntervalRef = useRef(null);
 
-          // Cargar configuración al inicio
           useEffect(() => {
-            loadConfig();
-          }, []);
-
-          const loadConfig = () => {
             const saved = localStorage.getItem('bb_config');
             if (saved) {
               const parsed = JSON.parse(saved);
               setConfig(parsed);
-              if (parsed.sheetId && parsed.apiKey) {
-                loadFromSheets(parsed);
-              }
+              if (parsed.sheetId && parsed.apiKey) loadFromSheets(parsed);
             } else {
               setShowConfig(true);
             }
-          };
+          }, []);
 
-          const saveConfig = () => {
-            if (!config.sheetId || !config.apiKey) {
-              alert('❌ Debes completar Sheet ID y API Key');
-              return;
-            }
-            localStorage.setItem('bb_config', JSON.stringify(config));
-            loadFromSheets(config);
-            setShowConfig(false);
-          };
-
-          // Cargar datos desde Google Sheets
           const loadFromSheets = async (cfg = config) => {
             if (!cfg.sheetId || !cfg.apiKey) return;
-            
             setLoading(true);
             try {
-              // Cargar jugadores
-              const playersUrl = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/Jugadores!A2:D?key=${cfg.apiKey}`;
-              const playersRes = await fetch(playersUrl);
-              const playersData = await playersRes.json();
+              const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/`;
               
-              if (playersData.values) {
-                const loadedPlayers = playersData.values.map(row => ({
-                  id: row[0] || Date.now().toString(),
-                  name: row[1] || '',
-                  number: row[2] || '',
-                  team: row[3] || ''
-                }));
-                setPlayers(loadedPlayers);
-              }
-
-              // Cargar sesiones
-              const sessionsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/Sesiones!A2:C?key=${cfg.apiKey}`;
-              const sessionsRes = await fetch(sessionsUrl);
-              const sessionsData = await sessionsRes.json();
+              const [pRes, sRes] = await Promise.all([
+                fetch(`${baseUrl}Jugadores!A2:G?key=${cfg.apiKey}`),
+                fetch(`${baseUrl}Sesiones!A2:F?key=${cfg.apiKey}`)
+              ]);
               
-              if (sessionsData.values) {
-                const loadedSessions = sessionsData.values.map(row => ({
-                  id: row[0] || Date.now().toString(),
-                  date: row[1] || new Date().toISOString(),
-                  attendance: row[2] ? row[2].split(',') : []
-                }));
-                setSessions(loadedSessions);
+              const [pData, sData] = await Promise.all([pRes.json(), sRes.json()]);
+              
+              if (pData.values) {
+                setPlayers(pData.values.map(r => ({
+                  id: r[0], name: r[1], number: r[2], team: r[3], serie: r[4], email: r[5], phone: r[6]
+                })));
               }
-
+              
+              if (sData.values) {
+                setSessions(sData.values.map(r => ({
+                  id: r[0], date: r[1], type: r[2], location: r[3], attendance: r[4]?.split(',') || [], notes: r[5]
+                })));
+              }
+              
               setConnected(true);
-              alert('✓ Datos cargados desde Google Sheets');
+              alert('✓ Datos cargados');
             } catch (error) {
-              console.error('Error cargando datos:', error);
-              alert('❌ Error conectando con Google Sheets. Verifica tu configuración.');
+              alert('❌ Error conectando');
               setConnected(false);
             }
             setLoading(false);
           };
 
-          // Guardar jugador en Google Sheets
-          const savePlayerToSheet = async (player) => {
+          const saveToSheet = async (sheet, values) => {
             try {
-              const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/Jugadores!A:D:append?valueInputOption=RAW&key=${config.apiKey}`;
-              
-              await fetch(url, {
+              await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheet}!A:Z:append?valueInputOption=RAW&key=${config.apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  values: [[player.id, player.name, player.number, player.team]]
-                })
+                body: JSON.stringify({ values: [values] })
               });
-              
               return true;
-            } catch (error) {
-              console.error('Error guardando jugador:', error);
-              return false;
-            }
-          };
-
-          // Guardar sesión en Google Sheets
-          const saveSessionToSheet = async (session) => {
-            try {
-              const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/Sesiones!A:C:append?valueInputOption=RAW&key=${config.apiKey}`;
-              
-              await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  values: [[session.id, session.date, session.attendance.join(',')]]
-                })
-              });
-              
-              return true;
-            } catch (error) {
-              console.error('Error guardando sesión:', error);
-              return false;
-            }
+            } catch { return false; }
           };
 
           const addPlayer = async () => {
-            if (!newPlayer.name || !newPlayer.number) {
-              alert('❌ Completa nombre y número');
-              return;
-            }
-
-            if (players.find(p => p.number === newPlayer.number)) {
-              alert('❌ Ya existe un jugador con ese número');
-              return;
-            }
-
-            const player = {
-              id: Date.now().toString(),
-              ...newPlayer
-            };
-
+            if (!newPlayer.name || !newPlayer.number) return alert('❌ Completa nombre y número');
+            if (players.find(p => p.number === newPlayer.number)) return alert('❌ Número duplicado');
+            
+            const player = { id: Date.now().toString(), ...newPlayer };
+            
             if (connected) {
-              const saved = await savePlayerToSheet(player);
-              if (!saved) {
-                alert('❌ Error guardando en Google Sheets');
-                return;
-              }
+              const saved = await saveToSheet('Jugadores', [player.id, player.name, player.number, player.team, player.serie, player.email, player.phone]);
+              if (!saved) return alert('❌ Error guardando');
             }
-
+            
             setPlayers([...players, player]);
-            setNewPlayer({ name: '', number: '', team: '' });
+            setNewPlayer({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
             alert('✓ Jugador agregado');
           };
 
           const startSession = () => {
             if (players.length === 0) {
               alert('❌ Primero agrega jugadores');
-              setView('players');
-              return;
+              return setView('players');
             }
-
-            const session = {
+            setCurrentSession({
               id: Date.now().toString(),
               date: new Date().toISOString(),
-              attendance: []
-            };
-            setCurrentSession(session);
+              type: sessionInfo.type,
+              location: sessionInfo.location,
+              attendance: [],
+              notes: sessionInfo.notes
+            });
             setView('scanner');
           };
 
-          const markAttendance = (playerId) => {
+          const markAttendance = async (playerId) => {
             if (!currentSession) return;
-            
             const player = players.find(p => p.id === playerId);
-            if (!player) {
-              alert('❌ Jugador no encontrado');
-              return;
-            }
-
-            if (currentSession.attendance.includes(playerId)) {
-              alert(`${player.name} ya está registrado`);
-              return;
-            }
-
-            const updated = {
-              ...currentSession,
-              attendance: [...currentSession.attendance, playerId]
-            };
+            if (!player) return alert('❌ Jugador no encontrado');
+            if (currentSession.attendance.includes(playerId)) return alert(`${player.name} ya registrado`);
+            
+            const updated = { ...currentSession, attendance: [...currentSession.attendance, playerId] };
             setCurrentSession(updated);
             
-            if (navigator.vibrate) {
-              navigator.vibrate(100);
+            if (connected) {
+              await saveToSheet('Asistencias', [Date.now().toString(), playerId, currentSession.id, new Date().toISOString(), 'presente']);
             }
             
+            if (navigator.vibrate) navigator.vibrate(100);
             alert(`✓ ${player.name} (#${player.number})`);
           };
 
           const endSession = async () => {
-            if (!currentSession || currentSession.attendance.length === 0) {
-              alert('❌ No hay asistencias registradas');
-              return;
-            }
+            if (!currentSession?.attendance.length) return alert('❌ No hay asistencias');
             
             if (connected) {
-              const saved = await saveSessionToSheet(currentSession);
-              if (!saved) {
-                alert('⚠️ Error guardando en Google Sheets, pero se guardó localmente');
-              }
+              await saveToSheet('Sesiones', [
+                currentSession.id, currentSession.date, currentSession.type, 
+                currentSession.location, currentSession.attendance.join(','), currentSession.notes
+              ]);
             }
-
+            
             setSessions([...sessions, currentSession]);
             setCurrentSession(null);
+            setSessionInfo({ type: 'Entrenamiento', location: '', notes: '' });
             stopCamera();
             setView('menu');
-            alert(`✓ Sesión guardada: ${currentSession.attendance.length} presentes`);
-          };
-
-          const manualEntry = () => {
-            const number = prompt('Número del jugador:');
-            if (!number) return;
-            
-            const player = players.find(p => p.number === number.trim());
-            if (player) {
-              markAttendance(player.id);
-            } else {
-              alert(`❌ Jugador #${number} no encontrado`);
-            }
-          };
-
-          const generateQR = (playerId) => {
-            return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${playerId}`;
+            alert('✓ Sesión guardada');
           };
 
           const startCamera = async () => {
             try {
-              const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment', width: 640, height: 480 } 
-              });
-              
+              const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
               if (videoRef.current) {
                 videoRef.current.srcObject = stream;
                 streamRef.current = stream;
                 setScanning(true);
-                
-                // Iniciar escaneo continuo con jsQR
-                scanIntervalRef.current = setInterval(scanQRCode, 300);
+                scanIntervalRef.current = setInterval(() => {
+                  if (!videoRef.current || !canvasRef.current || !window.jsQR) return;
+                  const video = videoRef.current;
+                  const canvas = canvasRef.current;
+                  const ctx = canvas.getContext('2d');
+                  
+                  if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+                  canvas.width = video.videoWidth;
+                  canvas.height = video.videoHeight;
+                  if (!canvas.width) return;
+                  
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                  const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+                  
+                  if (code?.data.startsWith('BB_')) {
+                    markAttendance(code.data.replace('BB_', ''));
+                  }
+                }, 300);
               }
-            } catch (error) {
-              alert('❌ Error con la cámara. Usa entrada manual.');
-              console.error(error);
-            }
-          };
-
-          const scanQRCode = () => {
-            if (!videoRef.current || !canvasRef.current || !window.jsQR) return;
-            
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            const context = canvas.getContext('2d');
-            
-            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            if (canvas.width === 0) return;
-            
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            
-            // Escanear con jsQR
-            const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: "dontInvert",
-            });
-            
-            if (code && code.data.startsWith('BB_')) {
-              const playerId = code.data.replace('BB_', '');
-              markAttendance(playerId);
-              // No detenemos la cámara para poder escanear múltiples códigos
+            } catch {
+              alert('❌ Error con la cámara');
             }
           };
 
           const stopCamera = () => {
             if (streamRef.current) {
-              streamRef.current.getTracks().forEach(track => track.stop());
+              streamRef.current.getTracks().forEach(t => t.stop());
               streamRef.current = null;
             }
             if (scanIntervalRef.current) {
@@ -376,429 +203,248 @@
             setScanning(false);
           };
 
-          const getPlayerStats = (playerId) => {
-            const attended = sessions.filter(s => s.attendance.includes(playerId)).length;
+          const getStats = (id) => {
+            const attended = sessions.filter(s => s.attendance.includes(id)).length;
             const total = sessions.length;
-            const percentage = total > 0 ? Math.round((attended / total) * 100) : 0;
-            return { attended, total, percentage };
-          };
-
-          const downloadQRs = () => {
-            if (players.length === 0) {
-              alert('❌ No hay jugadores');
-              return;
-            }
-            
-            players.forEach((player, index) => {
-              setTimeout(() => {
-                const link = document.createElement('a');
-                link.href = generateQR(player.id);
-                link.download = `QR_${player.number}_${player.name.replace(/\s/g, '_')}.png`;
-                link.click();
-              }, index * 500);
-            });
-            
-            alert(`📥 Descargando ${players.length} códigos QR...`);
-          };
-
-          const exportData = () => {
-            const data = {
-              players,
-              sessions,
-              exportDate: new Date().toISOString()
-            };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `basketball_backup_${new Date().toISOString().split('T')[0]}.json`;
-            link.click();
-            alert('✓ Backup exportado');
+            return { attended, total, percentage: total ? Math.round((attended/total)*100) : 0 };
           };
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4">
               <div className="max-w-4xl mx-auto">
-                <div className="bg-white rounded-2xl shadow-2xl overflow-hidden fade-in">
+                <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
                   
-                  {/* Header */}
                   <div className="bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h1 className="text-3xl font-bold flex items-center gap-3">
-                          🏀 Basketball Attendance
-                        </h1>
+                        <h1 className="text-3xl font-bold">🏀 Asistencia Basketball</h1>
                         <p className="text-orange-100 mt-1">Sistema integrado con Google Sheets</p>
                       </div>
-                      <div className="text-right">
-                        <button 
-                          onClick={() => setShowConfig(!showConfig)}
-                          className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition flex items-center gap-2"
-                        >
-                          {React.createElement(connected ? Wifi : WifiOff, { size: 20 })}
-                          {connected ? 'Conectado' : 'Configurar'}
-                        </button>
-                      </div>
+                      <button onClick={() => setShowConfig(!showConfig)} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg">
+                        {React.createElement(connected ? Wifi : WifiOff, { size: 20 })}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Configuración */}
                   {showConfig && (
-                    <div className="bg-yellow-50 border-b-4 border-yellow-400 p-6">
-                      <h3 className="font-bold text-lg mb-3">⚙️ Configuración Google Sheets</h3>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-semibold mb-1">Sheet ID:</label>
-                          <input
-                            type="text"
-                            value={config.sheetId}
-                            onChange={(e) => setConfig({...config, sheetId: e.target.value})}
-                            placeholder="ID de tu Google Sheet"
-                            className="w-full p-2 border rounded-lg"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold mb-1">API Key:</label>
-                          <input
-                            type="text"
-                            value={config.apiKey}
-                            onChange={(e) => setConfig({...config, apiKey: e.target.value})}
-                            placeholder="Tu API Key de Google Cloud"
-                            className="w-full p-2 border rounded-lg"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={saveConfig} className="flex-1 bg-green-600 text-white p-2 rounded-lg hover:bg-green-700">
-                            Guardar y Conectar
-                          </button>
-                          <button onClick={() => loadFromSheets()} className="px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                            {React.createElement(RefreshCw, { size: 16 })}
-                            Recargar
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-600 mt-3">
-                        📖 Crea hojas "Jugadores" (ID, Nombre, Número, Equipo) y "Sesiones" (ID, Fecha, Asistencia)
-                      </p>
+                    <div className="bg-yellow-50 p-6">
+                      <h3 className="font-bold mb-3">⚙️ Configuración</h3>
+                      <input
+                        type="text"
+                        value={config.sheetId}
+                        onChange={(e) => setConfig({...config, sheetId: e.target.value})}
+                        placeholder="Sheet ID"
+                        className="w-full p-2 border rounded mb-2"
+                      />
+                      <input
+                        type="text"
+                        value={config.apiKey}
+                        onChange={(e) => setConfig({...config, apiKey: e.target.value})}
+                        placeholder="API Key"
+                        className="w-full p-2 border rounded mb-2"
+                      />
+                      <button onClick={() => {
+                        localStorage.setItem('bb_config', JSON.stringify(config));
+                        loadFromSheets(config);
+                        setShowConfig(false);
+                      }} className="w-full bg-green-600 text-white p-2 rounded">
+                        Guardar
+                      </button>
                     </div>
                   )}
 
-                  {loading && (
-                    <div className="bg-blue-50 p-4 text-center">
-                      {React.createElement(RefreshCw, { className: "animate-spin inline-block mr-2" })}
-                      Cargando datos desde Google Sheets...
-                    </div>
-                  )}
+                  {loading && <div className="bg-blue-50 p-4 text-center">Cargando...</div>}
 
-                  {/* Menu Principal */}
                   {view === 'menu' && (
-                    <div className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <button
-                          onClick={() => setView('players')}
-                          className="p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
-                        >
-                          {React.createElement(Users, { size: 48 })}
-                          <span className="text-xl font-semibold">Gestionar Jugadores</span>
-                          <span className="text-sm opacity-90">{players.length} jugadores</span>
-                        </button>
-
-                        <button
-                          onClick={startSession}
-                          className="p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
-                        >
-                          {React.createElement(Camera, { size: 48 })}
-                          <span className="text-xl font-semibold">Tomar Asistencia</span>
-                          <span className="text-sm opacity-90">Nueva sesión</span>
-                        </button>
-
-                        <button
-                          onClick={() => setView('qrcodes')}
-                          className="p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
-                        >
-                          {React.createElement(QrCode, { size: 48 })}
-                          <span className="text-xl font-semibold">Códigos QR</span>
-                          <span className="text-sm opacity-90">Imprimir credenciales</span>
-                        </button>
-
-                        <button
-                          onClick={() => setView('history')}
-                          className="p-6 bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex flex-col items-center gap-3 transition transform hover:scale-105"
-                        >
-                          {React.createElement(ClipboardList, { size: 48 })}
-                          <span className="text-xl font-semibold">Historial</span>
-                          <span className="text-sm opacity-90">{sessions.length} sesiones</span>
-                        </button>
-                      </div>
-
-                      <div className="space-y-3">
-                        <button
-                          onClick={() => setView('stats')}
-                          className="w-full p-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg flex items-center justify-center gap-2"
-                        >
-                          {React.createElement(BarChart3, { size: 20 })}
-                          Ver Estadísticas
-                        </button>
-
-                        <button onClick={exportData} className="w-full p-3 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center justify-center gap-2">
-                          {React.createElement(Download, { size: 20 })}
-                          Exportar Backup Local
-                        </button>
-                      </div>
+                    <div className="p-6 grid grid-cols-2 gap-4">
+                      <button onClick={() => setView('players')} className="p-6 bg-blue-500 text-white rounded-xl">
+                        {React.createElement(Users, { size: 40 })}
+                        <div className="mt-2">Jugadores</div>
+                        <div className="text-sm">{players.length}</div>
+                      </button>
+                      <button onClick={() => setView('session-setup')} className="p-6 bg-green-500 text-white rounded-xl">
+                        {React.createElement(Camera, { size: 40 })}
+                        <div className="mt-2">Asistencia</div>
+                      </button>
+                      <button onClick={() => setView('qrcodes')} className="p-6 bg-purple-500 text-white rounded-xl">
+                        {React.createElement(QrCode, { size: 40 })}
+                        <div className="mt-2">Códigos QR</div>
+                      </button>
+                      <button onClick={() => setView('history')} className="p-6 bg-amber-500 text-white rounded-xl">
+                        {React.createElement(ClipboardList, { size: 40 })}
+                        <div className="mt-2">Historial</div>
+                        <div className="text-sm">{sessions.length}</div>
+                      </button>
+                      <button onClick={() => setView('stats')} className="col-span-2 p-4 bg-indigo-500 text-white rounded-lg">
+                        {React.createElement(BarChart3, { size: 20 })} Estadísticas
+                      </button>
                     </div>
                   )}
 
-                  {/* Gestión de Jugadores */}
                   {view === 'players' && (
                     <div className="p-6">
-                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
-                        ← Volver
-                      </button>
-
+                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600">← Volver</button>
                       <div className="bg-blue-50 p-4 rounded-xl mb-4">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                          {React.createElement(Plus, { size: 24 })}
-                          Agregar Jugador
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <input
-                            type="text"
-                            placeholder="Nombre completo *"
-                            value={newPlayer.name}
-                            onChange={(e) => setNewPlayer({...newPlayer, name: e.target.value})}
-                            className="p-3 border rounded-lg"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Número *"
-                            value={newPlayer.number}
-                            onChange={(e) => setNewPlayer({...newPlayer, number: e.target.value})}
-                            className="p-3 border rounded-lg"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Equipo"
-                            value={newPlayer.team}
-                            onChange={(e) => setNewPlayer({...newPlayer, team: e.target.value})}
-                            className="p-3 border rounded-lg"
-                          />
-                        </div>
-                        <button onClick={addPlayer} className="mt-3 w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">
-                          Agregar Jugador
-                        </button>
+                        <h2 className="font-bold mb-3">Agregar Jugador</h2>
+                        <input type="text" placeholder="Nombre *" value={newPlayer.name} onChange={(e) => setNewPlayer({...newPlayer, name: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <input type="text" placeholder="Número *" value={newPlayer.number} onChange={(e) => setNewPlayer({...newPlayer, number: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <input type="text" placeholder="Equipo" value={newPlayer.team} onChange={(e) => setNewPlayer({...newPlayer, team: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <input type="text" placeholder="Serie" value={newPlayer.serie} onChange={(e) => setNewPlayer({...newPlayer, serie: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <input type="email" placeholder="Email" value={newPlayer.email} onChange={(e) => setNewPlayer({...newPlayer, email: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <input type="tel" placeholder="Teléfono" value={newPlayer.phone} onChange={(e) => setNewPlayer({...newPlayer, phone: e.target.value})} className="w-full p-2 border rounded mb-2" />
+                        <button onClick={addPlayer} className="w-full bg-blue-600 text-white p-2 rounded">Agregar</button>
                       </div>
-
                       <div className="space-y-2">
-                        {players.length === 0 ? (
-                          <div className="text-center py-12 text-gray-500">
-                            {React.createElement(Users, { size: 64, className: "mx-auto mb-4 opacity-30" })}
-                            <p className="text-lg">No hay jugadores</p>
-                          </div>
-                        ) : (
-                          players.map(player => {
-                            const stats = getPlayerStats(player.id);
-                            return (
-                              <div key={player.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                <div className="flex-1">
-                                  <div className="font-semibold text-lg">#{player.number} - {player.name}</div>
-                                  {player.team && <div className="text-sm text-gray-600">{player.team}</div>}
-                                  {sessions.length > 0 && (
-                                    <div className="text-xs text-gray-500 mt-1">
-                                      {stats.attended}/{stats.total} sesiones ({stats.percentage}%)
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
+                        {players.map(p => {
+                          const stats = getStats(p.id);
+                          return (
+                            <div key={p.id} className="p-4 bg-gray-50 rounded-lg">
+                              <div className="font-bold">#{p.number} - {p.name}</div>
+                              {p.team && <div className="text-sm text-gray-600">Equipo: {p.team}</div>}
+                              {p.serie && <div className="text-sm text-gray-600">Serie: {p.serie}</div>}
+                              {p.email && <div className="text-xs text-gray-500">{p.email}</div>}
+                              {sessions.length > 0 && <div className="text-xs text-gray-500 mt-1">{stats.attended}/{stats.total} ({stats.percentage}%)</div>}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
-                  {/* Escáner */}
+                  {view === 'session-setup' && (
+                    <div className="p-6">
+                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600">← Volver</button>
+                      <div className="bg-green-50 p-6 rounded-xl">
+                        <h2 className="text-xl font-bold mb-4">Configurar Sesión</h2>
+                        <select value={sessionInfo.type} onChange={(e) => setSessionInfo({...sessionInfo, type: e.target.value})} className="w-full p-3 border rounded mb-3">
+                          <option>Entrenamiento</option>
+                          <option>Partido</option>
+                          <option>Amistoso</option>
+                          <option>Torneo</option>
+                        </select>
+                        <input type="text" value={sessionInfo.location} onChange={(e) => setSessionInfo({...sessionInfo, location: e.target.value})} placeholder="Ubicación" className="w-full p-3 border rounded mb-3" />
+                        <textarea value={sessionInfo.notes} onChange={(e) => setSessionInfo({...sessionInfo, notes: e.target.value})} placeholder="Notas" className="w-full p-3 border rounded mb-3" rows="3"></textarea>
+                        <button onClick={startSession} className="w-full bg-green-600 text-white p-4 rounded-lg font-bold">Iniciar Asistencia</button>
+                      </div>
+                    </div>
+                  )}
+
                   {view === 'scanner' && (
                     <div className="p-6">
-                      <div className="mb-4 flex justify-between items-center">
-                        <button 
-                          onClick={() => { stopCamera(); setView('menu'); }} 
-                          className="text-red-600 hover:underline font-semibold"
-                        >
-                          ✕ Cancelar
-                        </button>
-                        <button 
-                          onClick={endSession} 
-                          className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold"
-                        >
-                          Finalizar Sesión
-                        </button>
+                      <div className="flex justify-between mb-4">
+                        <button onClick={() => { stopCamera(); setView('menu'); }} className="text-red-600">✕ Cancelar</button>
+                        <button onClick={endSession} className="bg-green-600 text-white px-6 py-2 rounded-lg">Finalizar</button>
                       </div>
-
-                      <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-xl mb-4 border-2 border-green-200">
-                        <div className="text-lg font-semibold mb-2">📅 Sesión Actual</div>
-                        <div className="text-3xl font-bold text-green-600 mt-2">
-                          {currentSession?.attendance.length || 0} / {players.length}
-                        </div>
+                      <div className="bg-green-50 p-4 rounded-xl mb-4">
+                        <div className="font-bold mb-2">{currentSession?.type}</div>
+                        {currentSession?.location && <div className="text-sm flex items-center gap-1">{React.createElement(MapPin, {size:14})} {currentSession.location}</div>}
+                        <div className="text-3xl font-bold text-green-600 mt-2">{currentSession?.attendance.length || 0} / {players.length}</div>
                       </div>
-
-                      <div className="space-y-3 mb-4">
-                        <button 
-                          onClick={startCamera} 
-                          className="w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2"
-                          disabled={scanning}
-                        >
-                          {React.createElement(Camera, { size: 24 })}
-                          {scanning ? 'Escaneando...' : 'Iniciar Escáner QR'}
-                        </button>
-
-                        <button 
-                          onClick={manualEntry} 
-                          className="w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700"
-                        >
-                          Entrada Manual (número)
-                        </button>
-                      </div>
-
+                      <button onClick={startCamera} disabled={scanning} className="w-full bg-blue-600 text-white p-4 rounded-xl mb-3">
+                        {scanning ? 'Escaneando...' : 'Iniciar Escáner'}
+                      </button>
+                      <button onClick={() => {
+                        const num = prompt('Número:');
+                        const p = players.find(p => p.number === num?.trim());
+                        if (p) markAttendance(p.id);
+                        else alert('No encontrado');
+                      }} className="w-full bg-purple-600 text-white p-4 rounded-xl mb-3">Entrada Manual</button>
                       {scanning && (
-                        <div className="relative mb-4">
-                          <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl" id="qr-video" />
+                        <div className="relative">
+                          <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl" />
                           <canvas ref={canvasRef} className="hidden" />
-                          <div className="absolute inset-0 border-4 border-green-500 rounded-xl pointer-events-none"></div>
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-2 border-white rounded-lg"></div>
                         </div>
                       )}
-
                       <div className="mt-4">
-                        <h3 className="font-semibold mb-2">✓ Presentes:</h3>
-                        <div className="space-y-2">
-                          {currentSession?.attendance.length === 0 ? (
-                            <p className="text-center py-8 text-gray-500">Sin registros aún</p>
-                          ) : (
-                            currentSession?.attendance.map(id => {
-                              const player = players.find(p => p.id === id);
-                              return player && (
-                                <div key={id} className="p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
-                                  <div className="font-semibold">#{player.number} - {player.name}</div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
+                        <h3 className="font-bold mb-2">✓ Presentes:</h3>
+                        {currentSession?.attendance.map(id => {
+                          const p = players.find(p => p.id === id);
+                          return p && <div key={id} className="p-3 bg-green-50 rounded-lg mb-2">#{p.number} - {p.name}</div>;
+                        })}
                       </div>
                     </div>
                   )}
 
-                  {/* QR Codes */}
                   {view === 'qrcodes' && (
                     <div className="p-6">
-                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
-                        ← Volver
-                      </button>
-
+                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600">← Volver</button>
                       {players.length > 0 && (
-                        <button 
-                          onClick={downloadQRs} 
-                          className="w-full mb-4 bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
-                        >
-                          {React.createElement(Download, { size: 20 })}
-                          Descargar Todos ({players.length})
+                        <button onClick={() => {
+                          players.forEach((p, i) => {
+                            setTimeout(() => {
+                              const a = document.createElement('a');
+                              a.href = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`;
+                              a.download = `QR_${p.number}_${p.name}.png`;
+                              a.click();
+                            }, i * 500);
+                          });
+                        }} className="w-full mb-4 bg-purple-600 text-white p-3 rounded-lg">
+                          {React.createElement(Download, {size:20})} Descargar Todos
                         </button>
                       )}
-
-                      {players.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                          {React.createElement(QrCode, { size: 64, className: "mx-auto mb-4 opacity-30" })}
-                          <p>No hay jugadores</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                          {players.map(player => (
-                            <div key={player.id} className="border-2 rounded-xl p-4 text-center bg-white">
-                              <img src={generateQR(player.id)} alt={player.name} className="w-full rounded-lg mb-2" />
-                              <div className="font-bold">#{player.number}</div>
-                              <div className="text-sm">{player.name}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        {players.map(p => (
+                          <div key={p.id} className="border-2 rounded-xl p-4 text-center">
+                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`} alt={p.name} className="w-full rounded mb-2" />
+                            <div className="font-bold">#{p.number}</div>
+                            <div className="text-sm">{p.name}</div>
+                            {p.serie && <div className="text-xs text-gray-500">Serie: {p.serie}</div>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* Historial */}
                   {view === 'history' && (
                     <div className="p-6">
-                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
-                        ← Volver
-                      </button>
-
-                      {sessions.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                          {React.createElement(ClipboardList, { size: 64, className: "mx-auto mb-4 opacity-30" })}
-                          <p>No hay sesiones registradas</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {sessions.slice().reverse().map(session => (
-                            <div key={session.id} className="border-2 rounded-xl p-4 bg-gray-50">
-                              <div className="flex justify-between mb-2">
-                                <div className="font-bold">
-                                  {new Date(session.date).toLocaleDateString('es')}
-                                </div>
-                                <div className="text-green-600 font-bold">{session.attendance.length}</div>
+                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600">← Volver</button>
+                      <div className="space-y-3">
+                        {sessions.slice().reverse().map(s => (
+                          <div key={s.id} className="border-2 rounded-xl p-4 bg-gray-50">
+                            <div className="flex justify-between mb-2">
+                              <div>
+                                <div className="font-bold">{new Date(s.date).toLocaleDateString('es')}</div>
+                                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">{s.type}</span>
+                                {s.location && <div className="text-sm text-gray-600">{React.createElement(MapPin, {size:14})} {s.location}</div>}
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                {session.attendance.map(id => {
-                                  const player = players.find(p => p.id === id);
-                                  return player && (
-                                    <span key={id} className="bg-green-100 px-2 py-1 rounded text-sm">
-                                      #{player.number}
-                                    </span>
-                                  );
-                                })}
-                              </div>
+                              <div className="text-2xl font-bold text-green-600">{s.attendance.length}</div>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            <div className="flex flex-wrap gap-2">
+                              {s.attendance.map(id => {
+                                const p = players.find(p => p.id === id);
+                                return p && <span key={id} className="bg-green-100 px-2 py-1 rounded text-sm">#{p.number}</span>;
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* Estadísticas */}
                   {view === 'stats' && (
                     <div className="p-6">
-                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600 hover:underline">
-                        ← Volver
-                      </button>
-
-                      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                        {React.createElement(BarChart3, { size: 28 })}
-                        Estadísticas
-                      </h2>
-
+                      <button onClick={() => setView('menu')} className="mb-4 text-blue-600">← Volver</button>
+                      <h2 className="text-2xl font-bold mb-4">Estadísticas</h2>
                       {sessions.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                          <p>No hay datos suficientes</p>
-                        </div>
+                        <p className="text-center text-gray-500 py-12">No hay datos</p>
                       ) : (
                         <div className="space-y-4">
-                          {players.map(player => {
-                            const stats = getPlayerStats(player.id);
+                          {players.map(p => {
+                            const stats = getStats(p.id);
                             return (
-                              <div key={player.id} className="border rounded-xl p-4 bg-gray-50">
+                              <div key={p.id} className="border rounded-xl p-4 bg-gray-50">
                                 <div className="flex justify-between mb-2">
                                   <div>
-                                    <div className="font-bold">#{player.number} - {player.name}</div>
+                                    <div className="font-bold">#{p.number} - {p.name}</div>
+                                    {p.serie && <div className="text-xs text-gray-500">Serie: {p.serie}</div>}
                                   </div>
                                   <div className="text-right">
-                                    <div className="text-2xl font-bold text-blue-600">{stats.percentage}%</div>
+                                    <div className="text-3xl font-bold text-blue-600">{stats.percentage}%</div>
                                     <div className="text-xs">{stats.attended}/{stats.total}</div>
                                   </div>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-3">
-                                  <div 
-                                    className="bg-blue-600 h-3 rounded-full"
-                                    style={{width: `${stats.percentage}%`}}
-                                  />
+                                  <div className="bg-blue-600 h-3 rounded-full" style={{width: `${stats.percentage}%`}} />
                                 </div>
                               </div>
                             );
@@ -814,9 +460,7 @@
           );
         };
 
-        // Renderizar la aplicación
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(BasketballAttendance));
+        ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
     </script>
 </body>
 </html>
