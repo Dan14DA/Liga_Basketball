@@ -9,13 +9,13 @@
     <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
 
-    <!-- Babel (para JSX en navegador) -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Lucide (iconos) -->
+    <!-- Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
@@ -28,12 +28,10 @@
       }
     </style>
   </head>
-
   <body>
     <div id="root">Cargando aplicación...</div>
 
-    <!-- 👇 Babel ahora con preset react -->
-    <script type="text/babel" data-presets="react">
+    <script type="text/babel" id="app-code">
       const { useState } = React;
 
       const Icon = ({ name, size = 32, color = "white" }) => {
@@ -43,7 +41,10 @@
         return (
           <span
             dangerouslySetInnerHTML={{ __html: svg }}
-            style={{ display: "inline-block", verticalAlign: "middle" }}
+            style={{
+              display: "inline-block",
+              verticalAlign: "middle",
+            }}
           ></span>
         );
       };
@@ -93,7 +94,17 @@
         );
       };
 
-      ReactDOM.render(<App />, document.getElementById("root"));
+      window._App = App; // 👈 guardamos el componente globalmente
+    </script>
+
+    <!-- 👇 este script ejecuta Babel manualmente -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const code = document.getElementById("app-code").textContent;
+        const compiled = Babel.transform(code, { presets: ["react"] }).code;
+        eval(compiled);
+        ReactDOM.render(React.createElement(window._App), document.getElementById("root"));
+      });
     </script>
   </body>
 </html>
