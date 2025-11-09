@@ -5,26 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🏀 Asistencia Basketball</title>
 
-  <!-- React 17 (más compatible con Babel en tiempo real) -->
+  <!-- React + ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
 
-  <!-- Babel para JSX -->
+  <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Iconos Lucide -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Lucide (iconos SVG puros) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body class="bg-gradient-to-br from-orange-500 to-red-600 min-h-screen flex items-center justify-center">
   <div id="root" class="text-center text-white">⏳ Cargando aplicación...</div>
 
   <script type="text/babel" data-presets="react">
-    const { useState } = React;
-    const { Camera, Users, Wifi } = window.lucide;
+    const { useState, useEffect, useRef } = React;
+
+    // Función para insertar iconos Lucide directamente como SVG
+    const Icon = ({ name, size = 40, color = 'white' }) => {
+      const ref = useRef(null);
+      useEffect(() => {
+        lucide.createIcons({ icons: [name] });
+        if (ref.current) {
+          ref.current.innerHTML = lucide.icons[name].toSvg({ color, width: size, height: size });
+        }
+      }, [name]);
+      return <span ref={ref}></span>;
+    };
 
     const App = () => {
       const [view, setView] = useState("menu");
@@ -33,19 +44,28 @@
         <div className="max-w-md mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
           <div className="flex justify-between items-center border-b pb-3 mb-4">
             <h1 className="text-2xl font-bold text-orange-600">🏀 Asistencia Basketball</h1>
-            <button onClick={() => alert("Configuración")} className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded">
-              <Wifi size={16}/> Config
+            <button
+              onClick={() => alert("Configuración")}
+              className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded"
+            >
+              <Icon name="Wifi" size={18} color="white" /> Config
             </button>
           </div>
 
           {view === "menu" && (
             <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setView("players")} className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center">
-                <Users size={40}/>
+              <button
+                onClick={() => setView("players")}
+                className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center"
+              >
+                <Icon name="Users" />
                 <span className="mt-2 font-semibold">Jugadores</span>
               </button>
-              <button onClick={() => alert('Función próximamente')} className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center">
-                <Camera size={40}/>
+              <button
+                onClick={() => alert("Función próximamente")}
+                className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center"
+              >
+                <Icon name="Camera" />
                 <span className="mt-2 font-semibold">Asistencia</span>
               </button>
             </div>
