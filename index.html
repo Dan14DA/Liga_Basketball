@@ -4,213 +4,84 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🏀 Asistencia Basketball</title>
+
+  <!-- React + ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel para interpretar JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- TailwindCSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- ✅ CORRECTO: usamos lucide (no lucide-react) -->
+
+  <!-- Iconos Lucide -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <style>
+    body {
+      background: linear-gradient(to bottom right, #f97316, #dc2626);
+      color: white;
+      font-family: system-ui, sans-serif;
+    }
+  </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root" class="text-center mt-10">⏳ Cargando aplicación...</div>
 
-  <script type="text/babel">
+  <script type="text/babel" data-presets="env,react">
     const { useState, useEffect, useRef } = React;
-    // ✅ corregido: usamos 'lucide' en vez de 'lucideReact'
-    const { Camera, Users, QrCode, ClipboardList, Plus, Download, BarChart3, RefreshCw, Wifi, WifiOff, MapPin } = lucide;
+    const { Camera, Users, QrCode, ClipboardList, Plus, Download, BarChart3, RefreshCw, Wifi, WifiOff, MapPin } = window.lucide;
 
     const App = () => {
-      const [view, setView] = useState('menu');
+      const [view, setView] = useState("menu");
       const [players, setPlayers] = useState([]);
-      const [sessions, setSessions] = useState([]);
-      const [currentSession, setCurrentSession] = useState(null);
-      const [newPlayer, setNewPlayer] = useState({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
-      const [sessionInfo, setSessionInfo] = useState({ type: 'Entrenamiento', location: '', notes: '' });
-      const [scanning, setScanning] = useState(false);
-      const [connected, setConnected] = useState(false);
-      const [loading, setLoading] = useState(false);
-      const [config, setConfig] = useState({ sheetId: '', apiKey: '' });
-      const [showConfig, setShowConfig] = useState(false);
-
-      const videoRef = useRef(null);
-      const streamRef = useRef(null);
-
-      useEffect(() => {
-        const saved = localStorage.getItem('bb_config');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          setConfig(parsed);
-          if (parsed.sheetId && parsed.apiKey) loadFromSheets(parsed);
-        } else {
-          setShowConfig(true);
-        }
-      }, []);
-
-      const loadFromSheets = async (cfg = config) => {
-        if (!cfg.sheetId || !cfg.apiKey) return;
-        setLoading(true);
-        try {
-          const base = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/`;
-          const [pRes, sRes] = await Promise.all([
-            fetch(`${base}Jugadores!A2:G?key=${cfg.apiKey}`),
-            fetch(`${base}Sesiones!A2:F?key=${cfg.apiKey}`)
-          ]);
-          const [pData, sData] = await Promise.all([pRes.json(), sRes.json()]);
-          if (pData.values) {
-            setPlayers(pData.values.map(r => ({
-              id: r[0], name: r[1], number: r[2], team: r[3], serie: r[4], email: r[5], phone: r[6]
-            })));
-          }
-          if (sData.values) {
-            setSessions(sData.values.map(r => ({
-              id: r[0], date: r[1], type: r[2], location: r[3], attendance: r[4]?.split(',') || [], notes: r[5]
-            })));
-          }
-          setConnected(true);
-          alert('✓ Datos cargados');
-        } catch {
-          alert('❌ Error conectando');
-          setConnected(false);
-        }
-        setLoading(false);
-      };
-
-      const saveToSheet = async (sheet, values) => {
-        try {
-          await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheet}!A:Z:append?valueInputOption=RAW&key=${config.apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ values: [values] })
-            }
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      };
-
-      const addPlayer = async () => {
-        if (!newPlayer.name || !newPlayer.number) return alert('❌ Completa nombre y número');
-        if (players.find(p => p.number === newPlayer.number)) return alert('❌ Número duplicado');
-        const player = { id: Date.now().toString(), ...newPlayer };
-        if (connected) {
-          const saved = await saveToSheet('Jugadores', [player.id, player.name, player.number, player.team, player.serie, player.email, player.phone]);
-          if (!saved) return alert('❌ Error guardando');
-        }
-        setPlayers([...players, player]);
-        setNewPlayer({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
-        alert('✓ Jugador agregado');
-      };
-
-      const startSession = () => {
-        if (players.length === 0) {
-          alert('❌ Primero agrega jugadores');
-          return setView('players');
-        }
-        setCurrentSession({
-          id: Date.now().toString(),
-          date: new Date().toISOString(),
-          type: sessionInfo.type,
-          location: sessionInfo.location,
-          attendance: [],
-          notes: sessionInfo.notes
-        });
-        setView('scanner');
-      };
-
-      const markAttendance = (playerId) => {
-        if (!currentSession) return;
-        const player = players.find(p => p.id === playerId);
-        if (!player) return alert('❌ Jugador no encontrado');
-        if (currentSession.attendance.includes(playerId)) return alert(`${player.name} ya registrado`);
-        const updated = { ...currentSession, attendance: [...currentSession.attendance, playerId] };
-        setCurrentSession(updated);
-        if (navigator.vibrate) navigator.vibrate(100);
-        alert(`✓ ${player.name} (#${player.number})`);
-      };
-
-      const endSession = () => {
-        if (!currentSession?.attendance.length) return alert('❌ No hay asistencias');
-        setSessions([...sessions, currentSession]);
-        setCurrentSession(null);
-        setSessionInfo({ type: 'Entrenamiento', location: '', notes: '' });
-        setView('menu');
-        alert('✓ Sesión guardada');
-      };
-
-      const getStats = (id) => {
-        const attended = sessions.filter(s => s.attendance.includes(id)).length;
-        const total = sessions.length;
-        return { attended, total, percentage: total ? Math.round((attended/total)*100) : 0 };
-      };
 
       return (
         <div className="min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-
-              <div className="bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h1 className="text-3xl font-bold">🏀 Asistencia Basketball</h1>
-                    <p className="text-orange-100 mt-1">Sistema integrado con Google Sheets</p>
-                  </div>
-                  <button
-                    onClick={() => setShowConfig(!showConfig)}
-                    className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center gap-2"
-                  >
-                    {connected ? <Wifi size={20} /> : <WifiOff size={20} />}
-                    {connected ? 'Conectado' : 'Config'}
-                  </button>
-                </div>
-              </div>
-
-              {showConfig && (
-                <div className="bg-yellow-50 p-6 border-b-4 border-yellow-400">
-                  <h3 className="font-bold mb-3">⚙️ Configuración Google Sheets</h3>
-                  <input type="text" value={config.sheetId} onChange={e=>setConfig({...config, sheetId:e.target.value})} placeholder="Sheet ID" className="w-full p-2 border rounded mb-2"/>
-                  <input type="text" value={config.apiKey} onChange={e=>setConfig({...config, apiKey:e.target.value})} placeholder="API Key" className="w-full p-2 border rounded mb-2"/>
-                  <div className="flex gap-2">
-                    <button onClick={()=>{localStorage.setItem('bb_config',JSON.stringify(config));loadFromSheets(config);setShowConfig(false)}} className="flex-1 bg-green-600 text-white p-2 rounded">Guardar</button>
-                    <button onClick={()=>loadFromSheets()} className="px-4 bg-blue-600 text-white rounded flex items-center gap-2"><RefreshCw size={16}/>Recargar</button>
-                  </div>
-                </div>
-              )}
-
-              {loading && <div className="bg-blue-50 p-4 text-center">Cargando datos...</div>}
-
-              {view === 'menu' && (
-                <div className="p-6">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <button onClick={()=>setView('players')} className="p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl flex flex-col items-center gap-2">
-                      <Users size={40}/><span className="font-semibold">Jugadores</span><span className="text-sm">{players.length}</span>
-                    </button>
-                    <button onClick={()=>setView('session-setup')} className="p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl flex flex-col items-center gap-2">
-                      <Camera size={40}/><span className="font-semibold">Asistencia</span>
-                    </button>
-                    <button onClick={()=>setView('qrcodes')} className="p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl flex flex-col items-center gap-2">
-                      <QrCode size={40}/><span className="font-semibold">Códigos QR</span>
-                    </button>
-                    <button onClick={()=>setView('history')} className="p-6 bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex flex-col items-center gap-2">
-                      <ClipboardList size={40}/><span className="font-semibold">Historial</span><span className="text-sm">{sessions.length}</span>
-                    </button>
-                  </div>
-                  <button onClick={()=>setView('stats')} className="w-full p-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg flex items-center justify-center gap-2">
-                    <BarChart3 size={20}/>Estadísticas
-                  </button>
-                </div>
-              )}
-
+          <div className="max-w-3xl mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <h1 className="text-2xl font-bold text-orange-600">🏀 Asistencia Basketball</h1>
+              <button onClick={() => alert('Configuración próximamente...')} className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded">
+                <Wifi size={16}/> Config
+              </button>
             </div>
+
+            {view === "menu" && (
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setView("players")} className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center">
+                  <Users size={40}/>
+                  <span className="mt-2 font-semibold">Jugadores</span>
+                </button>
+                <button onClick={() => alert('Función próximamente')} className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center">
+                  <Camera size={40}/>
+                  <span className="mt-2 font-semibold">Asistencia</span>
+                </button>
+              </div>
+            )}
+
+            {view === "players" && (
+              <div>
+                <button onClick={() => setView("menu")} className="text-blue-600 hover:underline mb-4">← Volver</button>
+                <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
+                {players.length === 0 ? (
+                  <p className="text-gray-500">Aún no hay jugadores registrados.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {players.map((p, i) => (
+                      <li key={i} className="p-2 bg-gray-100 rounded">{p.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
     };
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
+    const root = ReactDOM.createRoot(document.getElementById("root"));
     root.render(<App />);
   </script>
 </body>
