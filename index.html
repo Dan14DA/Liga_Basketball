@@ -3,97 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🏀 Asistencia Basketball</title>
+    <title>Prueba React básica</title>
 
     <!-- React y ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
 
-    <!-- Babel para interpretar JSX en el navegador -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Lucide (iconos) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
       body {
-        background: linear-gradient(to bottom right, #f97316, #dc2626);
-        min-height: 100vh;
+        background: orange;
+        color: white;
+        font-family: system-ui;
+        text-align: center;
+        height: 100vh;
+        margin: 0;
         display: flex;
-        justify-content: center;
         align-items: center;
+        justify-content: center;
       }
     </style>
   </head>
   <body>
-    <div id="root">Cargando aplicación...</div>
+    <div id="root">Cargando...</div>
 
+    <!-- React con JSX -->
     <script type="text/babel">
-      const { useState } = React;
-
-      // Componente Icono usando Lucide (versión navegador)
-      const Icon = ({ name, size = 32, color = 'white' }) => {
-        const svg = lucide.icons[name]
-          ? lucide.icons[name].toSvg({ width: size, height: size, color })
-          : '';
+      function App() {
         return (
-          <span
-            dangerouslySetInnerHTML={{ __html: svg }}
-            style={{ display: 'inline-block', verticalAlign: 'middle' }}
-          ></span>
-        );
-      };
-
-      // App principal
-      const App = () => {
-        const [view, setView] = useState('menu');
-
-        return (
-          <div className="bg-white text-gray-800 rounded-2xl shadow-2xl p-6 max-w-md w-full">
-            <h1 className="text-2xl font-bold text-center text-orange-600 mb-6">
-              🏀 Asistencia Basketball
-            </h1>
-
-            {view === 'menu' && (
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setView('players')}
-                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl p-6 flex flex-col items-center"
-                >
-                  <Icon name="Users" />
-                  <span className="mt-2 font-semibold">Jugadores</span>
-                </button>
-
-                <button
-                  onClick={() => alert('Función de asistencia')}
-                  className="bg-green-500 hover:bg-green-600 text-white rounded-xl p-6 flex flex-col items-center"
-                >
-                  <Icon name="Camera" />
-                  <span className="mt-2 font-semibold">Asistencia</span>
-                </button>
-              </div>
-            )}
-
-            {view === 'players' && (
-              <div>
-                <button
-                  onClick={() => setView('menu')}
-                  className="text-blue-600 hover:underline mb-4 block"
-                >
-                  ← Volver
-                </button>
-                <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
-                <p className="text-gray-600">No hay jugadores registrados.</p>
-              </div>
-            )}
+          <div>
+            <h1>🎯 React está funcionando correctamente</h1>
+            <p>Si ves este texto, Babel y React se cargaron bien.</p>
           </div>
         );
-      };
+      }
 
-      ReactDOM.render(<App />, document.getElementById('root'));
+      ReactDOM.render(<App />, document.getElementById("root"));
     </script>
   </body>
 </html>
