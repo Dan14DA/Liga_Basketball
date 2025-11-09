@@ -5,84 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🏀 Asistencia Basketball</title>
 
-  <!-- React + ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- React 17 (más compatible con Babel en tiempo real) -->
+  <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
 
-  <!-- Babel para interpretar JSX -->
+  <!-- Babel para JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- TailwindCSS -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Iconos Lucide -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-
-  <style>
-    body {
-      background: linear-gradient(to bottom right, #f97316, #dc2626);
-      color: white;
-      font-family: system-ui, sans-serif;
-    }
-  </style>
 </head>
 
-<body>
-  <div id="root" class="text-center mt-10">⏳ Cargando aplicación...</div>
+<body class="bg-gradient-to-br from-orange-500 to-red-600 min-h-screen flex items-center justify-center">
+  <div id="root" class="text-center text-white">⏳ Cargando aplicación...</div>
 
-  <script type="text/babel" data-presets="env,react">
-    const { useState, useEffect, useRef } = React;
-    const { Camera, Users, QrCode, ClipboardList, Plus, Download, BarChart3, RefreshCw, Wifi, WifiOff, MapPin } = window.lucide;
+  <script type="text/babel" data-presets="react">
+    const { useState } = React;
+    const { Camera, Users, Wifi } = window.lucide;
 
     const App = () => {
       const [view, setView] = useState("menu");
-      const [players, setPlayers] = useState([]);
 
       return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4">
-          <div className="max-w-3xl mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
-            <div className="flex justify-between items-center mb-4 border-b pb-2">
-              <h1 className="text-2xl font-bold text-orange-600">🏀 Asistencia Basketball</h1>
-              <button onClick={() => alert('Configuración próximamente...')} className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded">
-                <Wifi size={16}/> Config
+        <div className="max-w-md mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
+          <div className="flex justify-between items-center border-b pb-3 mb-4">
+            <h1 className="text-2xl font-bold text-orange-600">🏀 Asistencia Basketball</h1>
+            <button onClick={() => alert("Configuración")} className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded">
+              <Wifi size={16}/> Config
+            </button>
+          </div>
+
+          {view === "menu" && (
+            <div className="grid grid-cols-2 gap-4">
+              <button onClick={() => setView("players")} className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center">
+                <Users size={40}/>
+                <span className="mt-2 font-semibold">Jugadores</span>
+              </button>
+              <button onClick={() => alert('Función próximamente')} className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center">
+                <Camera size={40}/>
+                <span className="mt-2 font-semibold">Asistencia</span>
               </button>
             </div>
+          )}
 
-            {view === "menu" && (
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => setView("players")} className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center">
-                  <Users size={40}/>
-                  <span className="mt-2 font-semibold">Jugadores</span>
-                </button>
-                <button onClick={() => alert('Función próximamente')} className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center">
-                  <Camera size={40}/>
-                  <span className="mt-2 font-semibold">Asistencia</span>
-                </button>
-              </div>
-            )}
-
-            {view === "players" && (
-              <div>
-                <button onClick={() => setView("menu")} className="text-blue-600 hover:underline mb-4">← Volver</button>
-                <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
-                {players.length === 0 ? (
-                  <p className="text-gray-500">Aún no hay jugadores registrados.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {players.map((p, i) => (
-                      <li key={i} className="p-2 bg-gray-100 rounded">{p.name}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
+          {view === "players" && (
+            <div>
+              <button onClick={() => setView("menu")} className="text-blue-600 hover:underline mb-4">← Volver</button>
+              <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
+              <p className="text-gray-600">Aún no hay jugadores registrados.</p>
+            </div>
+          )}
         </div>
       );
     };
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
+    ReactDOM.render(<App />, document.getElementById("root"));
   </script>
 </body>
 </html>
