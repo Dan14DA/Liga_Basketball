@@ -1,88 +1,109 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🏀 Asistencia Basketball</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🏀 Asistencia Basketball</title>
 
-  <!-- React + ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <!-- React + ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
 
-  <!-- Babel -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Lucide (iconos SVG puros) -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-</head>
+    <!-- Lucide (SVG icons) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-<body class="bg-gradient-to-br from-orange-500 to-red-600 min-h-screen flex items-center justify-center">
-  <div id="root" class="text-center text-white">⏳ Cargando aplicación...</div>
+    <style>
+      body {
+        background: linear-gradient(to bottom right, #f97316, #dc2626);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
 
-  <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useRef } = React;
+  <body>
+    <div id="root">⏳ Cargando aplicación...</div>
 
-    // Función para insertar iconos Lucide directamente como SVG
-    const Icon = ({ name, size = 40, color = 'white' }) => {
-      const ref = useRef(null);
-      useEffect(() => {
-        lucide.createIcons({ icons: [name] });
-        if (ref.current) {
-          ref.current.innerHTML = lucide.icons[name].toSvg({ color, width: size, height: size });
-        }
-      }, [name]);
-      return <span ref={ref}></span>;
-    };
+    <script type="text/babel" data-presets="react">
+      const { useState } = React;
 
-    const App = () => {
-      const [view, setView] = useState("menu");
+      // 🔹 Componente Icon: crea el SVG solo una vez
+      const Icon = ({ name, size = 40, color = "white" }) => {
+        const svg = lucide.icons[name]
+          ? lucide.icons[name].toSvg({ color, width: size, height: size })
+          : "";
+        return (
+          <span
+            dangerouslySetInnerHTML={{ __html: svg }}
+            style={{ display: "inline-block" }}
+          ></span>
+        );
+      };
 
-      return (
-        <div className="max-w-md mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
-          <div className="flex justify-between items-center border-b pb-3 mb-4">
-            <h1 className="text-2xl font-bold text-orange-600">🏀 Asistencia Basketball</h1>
-            <button
-              onClick={() => alert("Configuración")}
-              className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded"
-            >
-              <Icon name="Wifi" size={18} color="white" /> Config
-            </button>
+      const App = () => {
+        const [view, setView] = useState("menu");
+
+        return (
+          <div className="max-w-md mx-auto bg-white text-black rounded-2xl shadow-2xl p-6">
+            <div className="flex justify-between items-center border-b pb-3 mb-4">
+              <h1 className="text-2xl font-bold text-orange-600">
+                🏀 Asistencia Basketball
+              </h1>
+              <button
+                onClick={() => alert("Configuración")}
+                className="flex items-center gap-2 text-sm bg-orange-600 text-white px-3 py-1 rounded"
+              >
+                <Icon name="Wifi" size={18} color="white" /> Config
+              </button>
+            </div>
+
+            {view === "menu" && (
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setView("players")}
+                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center"
+                >
+                  <Icon name="Users" />
+                  <span className="mt-2 font-semibold">Jugadores</span>
+                </button>
+
+                <button
+                  onClick={() => alert("Función próximamente")}
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center"
+                >
+                  <Icon name="Camera" />
+                  <span className="mt-2 font-semibold">Asistencia</span>
+                </button>
+              </div>
+            )}
+
+            {view === "players" && (
+              <div>
+                <button
+                  onClick={() => setView("menu")}
+                  className="text-blue-600 hover:underline mb-4"
+                >
+                  ← Volver
+                </button>
+                <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
+                <p className="text-gray-600">
+                  Aún no hay jugadores registrados.
+                </p>
+              </div>
+            )}
           </div>
+        );
+      };
 
-          {view === "menu" && (
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setView("players")}
-                className="bg-blue-500 hover:bg-blue-600 text-white rounded-lg p-6 flex flex-col items-center"
-              >
-                <Icon name="Users" />
-                <span className="mt-2 font-semibold">Jugadores</span>
-              </button>
-              <button
-                onClick={() => alert("Función próximamente")}
-                className="bg-green-500 hover:bg-green-600 text-white rounded-lg p-6 flex flex-col items-center"
-              >
-                <Icon name="Camera" />
-                <span className="mt-2 font-semibold">Asistencia</span>
-              </button>
-            </div>
-          )}
-
-          {view === "players" && (
-            <div>
-              <button onClick={() => setView("menu")} className="text-blue-600 hover:underline mb-4">← Volver</button>
-              <h2 className="text-xl font-bold mb-4">Lista de jugadores</h2>
-              <p className="text-gray-600">Aún no hay jugadores registrados.</p>
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    ReactDOM.render(<App />, document.getElementById("root"));
-  </script>
-</body>
+      ReactDOM.render(<App />, document.getElementById("root"));
+    </script>
+  </body>
 </html>
