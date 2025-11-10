@@ -86,6 +86,7 @@
             setLoading(false);
           };
 
+          // FUNCIÓN FINAL Y CORREGIDA PARA GUARDAR DATOS
           const callAppsScript = async (action, values) => {
             try {
               const response = await fetch(config.scriptUrl, {
@@ -94,13 +95,19 @@
                 body: JSON.stringify({ action: action, data: values })
               });
               
-              if (!response.ok) throw new Error('Error en la respuesta del servidor');
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Error del servidor: ${response.status}. ${errorText}`);
+              }
               
               const result = await response.json();
-              if (result.status === 'success') return true;
-              else throw new Error(result.message || 'Error al guardar');
+              if (result.status === 'success') {
+                return true;
+              } else {
+                throw new Error(result.message || 'Error al guardar');
+              }
             } catch (error) {
-              console.error('Error:', error);
+              console.error('Error detallado:', error);
               showNotification(`❌ Error: ${error.message}`, 'error');
               return false;
             }
