@@ -7,6 +7,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -17,6 +18,7 @@ const [view,setView]=useState('menu');
 const [players,setPlayers]=useState([]);
 const [sessions,setSessions]=useState([]);
 const [currentSession,setCurrentSession]=useState(null);
+const [isEditingSession,setIsEditingSession]=useState(false);
 const [newPlayer,setNewPlayer]=useState({name:'',number:'',team:'',serie:'',email:'',phone:''});
 const [sessionInfo,setSessionInfo]=useState({type:'Entrenamiento',location:'',notes:''});
 const [scanning,setScanning]=useState(false);
@@ -26,6 +28,8 @@ const [config,setConfig]=useState({sheetId:'',apiKey:'',scriptUrl:''});
 const [showConfig,setShowConfig]=useState(false);
 const videoRef=useRef(null);
 const streamRef=useRef(null);
+const canvasRef=useRef(null);
+const scanIntervalRef=useRef(null);
 
 useEffect(()=>{
 const saved=localStorage.getItem('bb_config');
@@ -50,7 +54,7 @@ if(pData.values){
 setPlayers(pData.values.map(r=>({id:r[0],name:r[1],number:r[2],team:r[3],serie:r[4],email:r[5],phone:r[6]})));
 }
 if(sData.values){
-setSessions(sData.values.map(r=>({id:r[0],date:r[1],type:r[2],location:r[3],attendance:r[4]?.split(',')||[],notes:r[5]})));
+setSessions(sData.values.map(r=>({id:r[0],date:r[1],type:r[2],location:r[3],attendance:r[4]?.split(',').filter(Boolean)||[],notes:r[5]})));
 }
 setConnected(true);
 alert('✓ Datos cargados');
@@ -83,6 +87,13 @@ alert('✓ Jugador agregado');
 const startSession=()=>{
 if(players.length===0){alert('❌ Agrega jugadores');return setView('players');}
 setCurrentSession({id:Date.now().toString(),date:new Date().toISOString(),type:sessionInfo.type,location:sessionInfo.location,attendance:[],notes:sessionInfo.notes});
+setIsEditingSession(false);
+setView('scanner');
+};
+
+const continueSession=(session)=>{
+setCurrentSession({...session});
+setIsEditingSession(true);
 setView('scanner');
 };
 
@@ -93,32 +104,89 @@ if(!player)return alert('❌ No encontrado');
 if(currentSession.attendance.includes(playerId))return alert(`${player.name} ya registrado`);
 const updated={...currentSession,attendance:[...currentSession.attendance,playerId]};
 setCurrentSession(updated);
+if(!isEditingSession){
 await saveToScript('addAttendance',{id:Date.now().toString(),playerId,sessionId:currentSession.id,timestamp:new Date().toISOString(),status:'presente'});
-if(navigator.vibrate)navigator.vibrate(100);
-alert(`✓ ${player.name} (#${player.number})`);
+}
+if(navigator.vibrate)navigator.vibrate([200,100,200]);
+playSuccessSound();
+showFlash();
 };
 
 const endSession=async()=>{
 if(!currentSession?.attendance.length)return alert('❌ Sin asistencias');
+if(!isEditingSession){
 await saveToScript('addSession',{id:currentSession.id,date:currentSession.date,type:currentSession.type,location:currentSession.location,attendance:currentSession.attendance.join(','),notes:currentSession.notes});
 setSessions([...sessions,currentSession]);
+}else{
+const updatedSessions=sessions.map(s=>s.id===currentSession.id?currentSession:s);
+setSessions(updatedSessions);
+}
 setCurrentSession(null);
+setIsEditingSession(false);
 setSessionInfo({type:'Entrenamiento',location:'',notes:''});
 stopCamera();
 setView('menu');
-alert('✓ Sesión guardada');
+alert(`✓ Sesión ${isEditingSession?'actualizada':'guardada'}`);
 };
 
 const startCamera=async()=>{
 try{
-const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-if(videoRef.current){videoRef.current.srcObject=stream;streamRef.current=stream;setScanning(true);}
+const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
+if(videoRef.current){
+videoRef.current.srcObject=stream;
+streamRef.current=stream;
+setScanning(true);
+const canvas=canvasRef.current;
+canvas.width=videoRef.current.videoWidth;
+canvas.height=videoRef.current.videoHeight;
+scanIntervalRef.current=setInterval(scanQR,100);
+}
 }catch{alert('❌ Error con cámara');}
+};
+
+const scanQR=()=>{
+if(!scanning||!videoRef.current||videoRef.current.readyState!==videoRef.current.HAVE_ENOUGH_DATA)return;
+const canvas=canvasRef.current;
+const ctx=canvas.getContext('2d');
+ctx.drawImage(videoRef.current,0,0,canvas.width,canvas.height);
+const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+const code=window.jsQR?window.jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:"dontInvert"}):null;
+if(code&&code.data.startsWith('BB_')){
+const playerId=code.data.replace('BB_','');
+markAttendance(playerId);
+clearInterval(scanIntervalRef.current);
+setTimeout(()=>{if(scanning)scanIntervalRef.current=setInterval(scanQR,100);},1500);
+}
 };
 
 const stopCamera=()=>{
 if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());streamRef.current=null;}
+if(scanIntervalRef.current){clearInterval(scanIntervalRef.current);scanIntervalRef.current=null;}
 setScanning(false);
+};
+
+const playSuccessSound=()=>{
+const ctx=new(window.AudioContext||window.webkitAudioContext)();
+const osc=ctx.createOscillator();
+const gain=ctx.createGain();
+osc.connect(gain);gain.connect(ctx.destination);
+osc.frequency.value=800;osc.type='sine';
+gain.gain.setValueAtTime(0.3,ctx.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.2);
+osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.2);
+};
+
+const showFlash=()=>{
+const flash=document.createElement('div');
+flash.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,255,0,0.5);z-index:9999;pointer-events:none;animation:flashFade 0.5s;';
+document.body.appendChild(flash);
+setTimeout(()=>flash.remove(),500);
+if(!document.getElementById('flash-style')){
+const style=document.createElement('style');
+style.id='flash-style';
+style.textContent='@keyframes flashFade{0%{opacity:1;}100%{opacity:0;}}';
+document.head.appendChild(style);
+}
 };
 
 const getStats=(id)=>{
@@ -183,20 +251,27 @@ h('select',{value:sessionInfo.type,onChange:(e)=>setSessionInfo({...sessionInfo,
 h('option',null,'Entrenamiento'),h('option',null,'Partido'),h('option',null,'Amistoso'),h('option',null,'Torneo')),
 h('input',{type:'text',value:sessionInfo.location,onChange:(e)=>setSessionInfo({...sessionInfo,location:e.target.value}),placeholder:'Ubicación',className:'w-full p-3 border rounded mb-3'}),
 h('textarea',{value:sessionInfo.notes,onChange:(e)=>setSessionInfo({...sessionInfo,notes:e.target.value}),placeholder:'Notas',className:'w-full p-3 border rounded mb-3',rows:2}),
-h('button',{onClick:startSession,className:'w-full bg-green-600 text-white p-4 rounded-lg font-bold hover:bg-green-700'},'🎯 Iniciar'))),
+h('button',{onClick:startSession,className:'w-full bg-green-600 text-white p-4 rounded-lg font-bold hover:bg-green-700'},'🎯 Iniciar Nueva Sesión'))),
 
 view==='scanner'&&h('div',{className:'p-6'},
 h('div',{className:'flex justify-between mb-4'},
 h('button',{onClick:()=>{stopCamera();setView('menu');},className:'text-red-600 font-semibold'},'✕ Cancelar'),
-h('button',{onClick:endSession,className:'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'},'Finalizar')),
+h('button',{onClick:endSession,className:'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'},isEditingSession?'💾 Guardar Cambios':'Finalizar')),
+isEditingSession&&h('div',{className:'bg-amber-50 p-3 rounded-lg mb-4 border-2 border-amber-400'},
+h('div',{className:'font-bold text-amber-800'},'✏️ Editando sesión existente'),
+h('div',{className:'text-sm text-amber-700'},'Los cambios se guardarán cuando finalices')),
 h('div',{className:'bg-green-50 p-4 rounded-xl mb-4 border-2 border-green-200'},
 h('div',{className:'font-bold text-lg mb-1'},currentSession?.type),
 currentSession?.location&&h('div',{className:'text-sm text-gray-700'},`📍 ${currentSession.location}`),
 h('div',{className:'text-3xl font-bold text-green-600 mt-2'},`${currentSession?.attendance.length||0} / ${players.length}`)),
 h('div',{className:'space-y-3 mb-4'},
-h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'Escaneando...':'📸 Iniciar Escáner'),
+h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'📸 Escaneando...':'📸 Iniciar Escáner QR'),
 h('button',{onClick:()=>{const num=prompt('Número:');if(!num)return;const p=players.find(p=>p.number===num.trim());if(p)markAttendance(p.id);else alert('❌ No encontrado');},className:'w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700'},'⌨️ Entrada Manual')),
-scanning&&h('div',{className:'relative mb-4'},h('video',{ref:videoRef,autoPlay:true,playsInline:true,className:'w-full rounded-xl border-4 border-green-500'})),
+scanning&&h('div',{className:'relative mb-4'},
+h('video',{ref:videoRef,autoPlay:true,playsInline:true,className:'w-full rounded-xl border-4 border-green-500'}),
+h('canvas',{ref:canvasRef,className:'hidden'}),
+h('div',{className:'absolute inset-0 flex items-center justify-center pointer-events-none'},
+h('div',{className:'w-64 h-64 border-4 border-green-400 rounded-2xl'}))),
 h('div',{className:'mt-4'},h('h3',{className:'font-semibold mb-2 text-lg'},'✓ Presentes:'),
 currentSession?.attendance.length===0?h('p',{className:'text-center py-6 text-gray-500'},'Sin registros'):
 h('div',{className:'space-y-2'},currentSession?.attendance.map(id=>{const p=players.find(p=>p.id===id);return p&&h('div',{key:id,className:'p-3 bg-green-50 rounded-lg border-l-4 border-green-500'},h('div',{className:'font-semibold'},`#${p.number} - ${p.name}`),p.team&&h('div',{className:'text-sm text-gray-600'},p.team));})))),
@@ -210,7 +285,13 @@ h('div',{className:'grid grid-cols-2 md:grid-cols-3 gap-4'},players.map(p=>h('di
 view==='history'&&h('div',{className:'p-6'},
 h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
 sessions.length===0?h('div',{className:'text-center py-12 text-gray-500'},'No hay sesiones'):
-h('div',{className:'space-y-3'},sessions.slice().reverse().map(s=>h('div',{key:s.id,className:'border-2 rounded-xl p-4 bg-gray-50'},h('div',{className:'flex justify-between items-start mb-2'},h('div',null,h('div',{className:'font-bold'},new Date(s.date).toLocaleDateString('es')),h('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs'},s.type),s.location&&h('div',{className:'text-sm text-gray-600 mt-1'},`📍 ${s.location}`)),h('div',{className:'text-2xl font-bold text-green-600'},s.attendance.length)),h('div',{className:'flex flex-wrap gap-2 mt-2'},s.attendance.map(id=>{const p=players.find(p=>p.id===id);return p&&h('span',{key:id,className:'bg-green-100 px-2 py-1 rounded text-xs'},`#${p.number}`);})))))),
+h('div',{className:'space-y-3'},sessions.slice().reverse().map(s=>h('div',{key:s.id,className:'border-2 rounded-xl p-4 bg-gray-50'},
+h('div',{className:'flex justify-between items-start mb-2'},
+h('div',null,h('div',{className:'font-bold'},new Date(s.date).toLocaleDateString('es')),h('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs'},s.type),s.location&&h('div',{className:'text-sm text-gray-600 mt-1'},`📍 ${s.location}`)),
+h('div',null,
+h('div',{className:'text-2xl font-bold text-green-600 mb-2'},s.attendance.length),
+h('button',{onClick:()=>continueSession(s),className:'bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded text-sm'},'✏️ Editar'))),
+h('div',{className:'flex flex-wrap gap-2 mt-2'},s.attendance.map(id=>{const p=players.find(p=>p.id===id);return p&&h('span',{key:id,className:'bg-green-100 px-2 py-1 rounded text-xs'},`#${p.number}`);})))))),
 
 view==='stats'&&h('div',{className:'p-6'},
 h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
