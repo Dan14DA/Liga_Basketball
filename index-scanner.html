@@ -146,7 +146,6 @@ return;
 }
 videoRef.current.srcObject=stream;
 streamRef.current=stream;
-setScanning(true);
 setScanStatus('⏳ Esperando video...');
 videoRef.current.addEventListener('loadedmetadata',()=>{
 setScanStatus('📐 Configurando canvas...');
@@ -163,6 +162,7 @@ setScanStatus('❌ jsQR no cargado!');
 return;
 }
 setScanStatus('🔍 Escaneando...');
+setScanning(true);
 scanIntervalRef.current=setInterval(scanQR,100);
 },{once:true});
 videoRef.current.play().catch(e=>{
@@ -330,12 +330,12 @@ scanStatus),
 h('div',{className:'space-y-3 mb-4'},
 h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'📸 Escaneando...':'📸 Iniciar Escáner'),
 h('button',{onClick:()=>{const num=prompt('Número:');if(!num)return;const p=players.find(p=>p.number===num.trim());if(p)markAttendance(p.id);else alert('❌ No encontrado');},className:'w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700'},'⌨️ Entrada Manual')),
-h('div',{className:'relative mb-4',style:{display:scanning?'block':'none'}},
+scanning&&h('div',{className:'relative mb-4'},
 h('video',{ref:videoRef,autoPlay:true,playsInline:true,className:'w-full rounded-xl border-4 border-green-500'}),
-h('canvas',{ref:canvasRef,className:'hidden'}),
+h('canvas',{ref:canvasRef,style:{display:'none'}}),
 h('div',{className:'absolute inset-0 flex items-center justify-center pointer-events-none'},
 h('div',{className:'w-64 h-64 border-4 border-green-400 rounded-2xl'}))),
-h('div',{style:{position:'absolute',left:'-9999px'}},
+!scanning&&h('div',{style:{position:'absolute',left:'-9999px'}},
 h('video',{ref:videoRef,autoPlay:true,playsInline:true}),
 h('canvas',{ref:canvasRef})),
 h('div',{className:'mt-4'},h('h3',{className:'font-semibold mb-2 text-lg'},'✓ Presentes:'),
