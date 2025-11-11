@@ -22,6 +22,7 @@ const [isEditingSession,setIsEditingSession]=useState(false);
 const [newPlayer,setNewPlayer]=useState({name:'',number:'',team:'',serie:'',email:'',phone:''});
 const [sessionInfo,setSessionInfo]=useState({type:'Entrenamiento',location:'',notes:''});
 const [scanning,setScanning]=useState(false);
+const [scanStatus,setScanStatus]=useState('Esperando...');
 const [connected,setConnected]=useState(false);
 const [loading,setLoading]=useState(false);
 const [config,setConfig]=useState({sheetId:'',apiKey:'',scriptUrl:''});
@@ -30,6 +31,7 @@ const videoRef=useRef(null);
 const streamRef=useRef(null);
 const canvasRef=useRef(null);
 const scanIntervalRef=useRef(null);
+const scanCountRef=useRef(0);
 
 useEffect(()=>{
 const saved=localStorage.getItem('bb_config');
@@ -110,6 +112,7 @@ await saveToScript('addAttendance',{id:Date.now().toString(),playerId,sessionId:
 if(navigator.vibrate)navigator.vibrate([200,100,200]);
 playSuccessSound();
 showFlash();
+setScanStatus(`✅ ${player.name} registrado!`);
 };
 
 const endSession=async()=>{
@@ -130,38 +133,88 @@ alert(`✓ Sesión ${isEditingSession?'actualizada':'guardada'}`);
 };
 
 const startCamera=async()=>{
+setScanStatus('🔄 Iniciando cámara...');
+scanCountRef.current=0;
 try{
-const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
-if(videoRef.current){
+const constraints={video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}};
+setScanStatus('📱 Solicitando acceso...');
+const stream=await navigator.mediaDevices.getUserMedia(constraints);
+setScanStatus('✅ Permiso concedido');
+if(!videoRef.current){
+setScanStatus('❌ Video ref no existe');
+return;
+}
 videoRef.current.srcObject=stream;
 streamRef.current=stream;
 setScanning(true);
-videoRef.current.onloadedmetadata=()=>{
+setScanStatus('⏳ Esperando video...');
+videoRef.current.addEventListener('loadedmetadata',()=>{
+setScanStatus('📐 Configurando canvas...');
+if(!canvasRef.current){
+setScanStatus('❌ Canvas ref no existe');
+return;
+}
 const canvas=canvasRef.current;
 canvas.width=videoRef.current.videoWidth;
 canvas.height=videoRef.current.videoHeight;
-console.log('Cámara lista. Iniciando escaneo...');
-scanIntervalRef.current=setInterval(scanQR,100);
-};
+setScanStatus(`✅ Cámara lista (${canvas.width}x${canvas.height})`);
+if(!window.jsQR){
+setScanStatus('❌ jsQR no cargado!');
+return;
 }
+setScanStatus('🔍 Escaneando...');
+scanIntervalRef.current=setInterval(scanQR,100);
+},{once:true});
+videoRef.current.play().catch(e=>{
+setScanStatus('❌ Error play: '+e.message);
+});
 }catch(e){
+setScanStatus('❌ Error: '+e.message);
 console.error('Error cámara:',e);
-alert('❌ Error con cámara');
+alert('❌ Error con cámara: '+e.message);
 }
 };
 
 const scanQR=()=>{
-if(!scanning||!videoRef.current||videoRef.current.readyState!==videoRef.current.HAVE_ENOUGH_DATA)return;
+if(!scanning||!videoRef.current||!canvasRef.current)return;
+if(videoRef.current.readyState!==videoRef.current.HAVE_ENOUGH_DATA){
+setScanStatus('⏳ Video no listo...');
+return;
+}
 const canvas=canvasRef.current;
 const ctx=canvas.getContext('2d');
+if(canvas.width===0||canvas.height===0){
+canvas.width=videoRef.current.videoWidth;
+canvas.height=videoRef.current.videoHeight;
+}
 ctx.drawImage(videoRef.current,0,0,canvas.width,canvas.height);
 const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
-const code=window.jsQR?window.jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:"dontInvert"}):null;
-if(code&&code.data.startsWith('BB_')){
+if(!window.jsQR){
+setScanStatus('❌ jsQR no disponible');
+return;
+}
+scanCountRef.current++;
+if(scanCountRef.current%10===0){
+setScanStatus(`🔍 Escaneando... (${scanCountRef.current})`);
+}
+const code=window.jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:"dontInvert"});
+if(code){
+setScanStatus(`📱 QR detectado: ${code.data.substring(0,20)}...`);
+if(code.data.startsWith('BB_')){
 const playerId=code.data.replace('BB_','');
 markAttendance(playerId);
 clearInterval(scanIntervalRef.current);
-setTimeout(()=>{if(scanning)scanIntervalRef.current=setInterval(scanQR,100);},1500);
+setTimeout(()=>{
+if(scanning){
+scanCountRef.current=0;
+setScanStatus('🔍 Listo para siguiente...');
+scanIntervalRef.current=setInterval(scanQR,100);
+}
+},1500);
+}else{
+setScanStatus(`⚠️ QR no válido: ${code.data.substring(0,15)}`);
+setTimeout(()=>setScanStatus('🔍 Escaneando...'),2000);
+}
 }
 };
 
@@ -169,6 +222,8 @@ const stopCamera=()=>{
 if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());streamRef.current=null;}
 if(scanIntervalRef.current){clearInterval(scanIntervalRef.current);scanIntervalRef.current=null;}
 setScanning(false);
+setScanStatus('Esperando...');
+scanCountRef.current=0;
 };
 
 const playSuccessSound=()=>{
@@ -207,7 +262,7 @@ h('div',{className:'bg-white rounded-2xl shadow-2xl overflow-hidden'},
 h('div',{className:'bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white'},
 h('div',{className:'flex justify-between items-start'},
 h('div',null,h('h1',{className:'text-3xl font-bold'},'🏀 Asistencia Basketball'),h('p',{className:'text-orange-100 mt-1'},'Con Google Sheets + Apps Script')),
-h('button',{onClick:()=>setShowConfig(!showConfig),className:'bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg'},connected?'📡 Conectado':'⚙️ Config'))),
+h('button',{onClick:()=>setShowConfig(!showConfig),className:'bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg'},connected?'📡':'⚙️'))),
 
 showConfig&&h('div',{className:'bg-yellow-50 p-6 border-b-4 border-yellow-400'},
 h('h3',{className:'font-bold mb-3'},'⚙️ Configuración'),
@@ -262,16 +317,18 @@ h('button',{onClick:startSession,className:'w-full bg-green-600 text-white p-4 r
 view==='scanner'&&h('div',{className:'p-6'},
 h('div',{className:'flex justify-between mb-4'},
 h('button',{onClick:()=>{stopCamera();setView('menu');},className:'text-red-600 font-semibold'},'✕ Cancelar'),
-h('button',{onClick:endSession,className:'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'},isEditingSession?'💾 Guardar Cambios':'Finalizar')),
+h('button',{onClick:endSession,className:'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'},isEditingSession?'💾 Guardar':'Finalizar')),
 isEditingSession&&h('div',{className:'bg-amber-50 p-3 rounded-lg mb-4 border-2 border-amber-400'},
-h('div',{className:'font-bold text-amber-800'},'✏️ Editando sesión existente'),
-h('div',{className:'text-sm text-amber-700'},'Los cambios se guardarán cuando finalices')),
+h('div',{className:'font-bold text-amber-800'},'✏️ Editando sesión')),
 h('div',{className:'bg-green-50 p-4 rounded-xl mb-4 border-2 border-green-200'},
 h('div',{className:'font-bold text-lg mb-1'},currentSession?.type),
 currentSession?.location&&h('div',{className:'text-sm text-gray-700'},`📍 ${currentSession.location}`),
 h('div',{className:'text-3xl font-bold text-green-600 mt-2'},`${currentSession?.attendance.length||0} / ${players.length}`)),
+h('div',{className:'bg-blue-100 p-3 rounded-lg mb-4 text-sm font-mono'},
+h('div',{className:'font-bold mb-1'},'Estado del escáner:'),
+scanStatus),
 h('div',{className:'space-y-3 mb-4'},
-h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'📸 Escaneando...':'📸 Iniciar Escáner QR'),
+h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'📸 Escaneando...':'📸 Iniciar Escáner'),
 h('button',{onClick:()=>{const num=prompt('Número:');if(!num)return;const p=players.find(p=>p.number===num.trim());if(p)markAttendance(p.id);else alert('❌ No encontrado');},className:'w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700'},'⌨️ Entrada Manual')),
 scanning&&h('div',{className:'relative mb-4'},
 h('video',{ref:videoRef,autoPlay:true,playsInline:true,className:'w-full rounded-xl border-4 border-green-500'}),
