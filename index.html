@@ -7,522 +7,219 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-        * { box-sizing: border-box; }
-    </style>
 </head>
 <body>
     <div id="root"></div>
-    
     <script>
-        const { useState, useEffect, useRef, createElement: h } = React;
+const {useState,useEffect,useRef,createElement:h}=React;
+const App=()=>{
+const [view,setView]=useState('menu');
+const [players,setPlayers]=useState([]);
+const [sessions,setSessions]=useState([]);
+const [currentSession,setCurrentSession]=useState(null);
+const [newPlayer,setNewPlayer]=useState({name:'',number:'',team:'',serie:'',email:'',phone:''});
+const [sessionInfo,setSessionInfo]=useState({type:'Entrenamiento',location:'',notes:''});
+const [scanning,setScanning]=useState(false);
+const [connected,setConnected]=useState(false);
+const [loading,setLoading]=useState(false);
+const [config,setConfig]=useState({sheetId:'',apiKey:'',scriptUrl:''});
+const [showConfig,setShowConfig]=useState(false);
+const videoRef=useRef(null);
+const streamRef=useRef(null);
 
-        const App = () => {
-          const [view, setView] = useState('menu');
-          const [players, setPlayers] = useState([]);
-          const [sessions, setSessions] = useState([]);
-          const [currentSession, setCurrentSession] = useState(null);
-          const [newPlayer, setNewPlayer] = useState({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
-          const [sessionInfo, setSessionInfo] = useState({ type: 'Entrenamiento', location: '', notes: '' });
-          const [scanning, setScanning] = useState(false);
-          const [connected, setConnected] = useState(false);
-          const [loading, setLoading] = useState(false);
-          const [config, setConfig] = useState({ sheetId: '', apiKey: '' });
-          const [showConfig, setShowConfig] = useState(false);
-          
-          const videoRef = useRef(null);
-          const streamRef = useRef(null);
+useEffect(()=>{
+const saved=localStorage.getItem('bb_config');
+if(saved){
+const parsed=JSON.parse(saved);
+setConfig(parsed);
+if(parsed.sheetId&&parsed.apiKey)loadFromSheets(parsed);
+}else{setShowConfig(true);}
+},[]);
 
-          useEffect(() => {
-            const saved = localStorage.getItem('bb_config');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              setConfig(parsed);
-              if (parsed.sheetId && parsed.apiKey) loadFromSheets(parsed);
-            } else {
-              setShowConfig(true);
-            }
-          }, []);
+const loadFromSheets=async(cfg=config)=>{
+if(!cfg.sheetId||!cfg.apiKey)return;
+setLoading(true);
+try{
+const base=`https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/`;
+const [pRes,sRes]=await Promise.all([
+fetch(`${base}Jugadores!A2:G?key=${cfg.apiKey}`),
+fetch(`${base}Sesiones!A2:F?key=${cfg.apiKey}`)
+]);
+const [pData,sData]=await Promise.all([pRes.json(),sRes.json()]);
+if(pData.values){
+setPlayers(pData.values.map(r=>({id:r[0],name:r[1],number:r[2],team:r[3],serie:r[4],email:r[5],phone:r[6]})));
+}
+if(sData.values){
+setSessions(sData.values.map(r=>({id:r[0],date:r[1],type:r[2],location:r[3],attendance:r[4]?.split(',')||[],notes:r[5]})));
+}
+setConnected(true);
+alert('✓ Datos cargados');
+}catch(e){
+alert('❌ Error conectando');
+setConnected(false);
+}
+setLoading(false);
+};
 
-          const loadFromSheets = async (cfg = config) => {
-            if (!cfg.sheetId || !cfg.apiKey) return;
-            setLoading(true);
-            try {
-              const base = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.sheetId}/values/`;
-              const [pRes, sRes] = await Promise.all([
-                fetch(`${base}Jugadores!A2:G?key=${cfg.apiKey}`),
-                fetch(`${base}Sesiones!A2:F?key=${cfg.apiKey}`)
-              ]);
-              const [pData, sData] = await Promise.all([pRes.json(), sRes.json()]);
-              if (pData.values) {
-                setPlayers(pData.values.map(r => ({
-                  id: r[0], name: r[1], number: r[2], team: r[3], serie: r[4], email: r[5], phone: r[6]
-                })));
-              }
-              if (sData.values) {
-                setSessions(sData.values.map(r => ({
-                  id: r[0], date: r[1], type: r[2], location: r[3], attendance: r[4]?.split(',') || [], notes: r[5]
-                })));
-              }
-              setConnected(true);
-              alert('✓ Datos cargados');
-            } catch {
-              alert('❌ Error conectando');
-              setConnected(false);
-            }
-            setLoading(false);
-          };
+const saveToScript=async(action,data)=>{
+if(!config.scriptUrl)return alert('❌ Falta Script URL'),false;
+try{
+await fetch(config.scriptUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});
+return true;
+}catch(e){return false;}
+};
 
-          const saveToSheet = async (sheet, values) => {
-            try {
-              await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${config.sheetId}/values/${sheet}!A:Z:append?valueInputOption=RAW&key=${config.apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ values: [values] })
-              });
-              return true;
-            } catch { return false; }
-          };
+const addPlayer=async()=>{
+if(!newPlayer.name||!newPlayer.number)return alert('❌ Completa campos');
+if(players.find(p=>p.number===newPlayer.number))return alert('❌ Número duplicado');
+const player={id:Date.now().toString(),...newPlayer};
+const saved=await saveToScript('addPlayer',player);
+if(!saved)return alert('❌ Error guardando');
+setPlayers([...players,player]);
+setNewPlayer({name:'',number:'',team:'',serie:'',email:'',phone:''});
+alert('✓ Jugador agregado');
+};
 
-          const addPlayer = async () => {
-            if (!newPlayer.name || !newPlayer.number) return alert('❌ Completa nombre y número');
-            if (players.find(p => p.number === newPlayer.number)) return alert('❌ Número duplicado');
-            const player = { id: Date.now().toString(), ...newPlayer };
-            if (connected) {
-              const saved = await saveToSheet('Jugadores', [player.id, player.name, player.number, player.team, player.serie, player.email, player.phone]);
-              if (!saved) return alert('❌ Error guardando');
-            }
-            setPlayers([...players, player]);
-            setNewPlayer({ name: '', number: '', team: '', serie: '', email: '', phone: '' });
-            alert('✓ Jugador agregado');
-          };
+const startSession=()=>{
+if(players.length===0){alert('❌ Agrega jugadores');return setView('players');}
+setCurrentSession({id:Date.now().toString(),date:new Date().toISOString(),type:sessionInfo.type,location:sessionInfo.location,attendance:[],notes:sessionInfo.notes});
+setView('scanner');
+};
 
-          const startSession = () => {
-            if (players.length === 0) {
-              alert('❌ Primero agrega jugadores');
-              return setView('players');
-            }
-            setCurrentSession({
-              id: Date.now().toString(),
-              date: new Date().toISOString(),
-              type: sessionInfo.type,
-              location: sessionInfo.location,
-              attendance: [],
-              notes: sessionInfo.notes
-            });
-            setView('scanner');
-          };
+const markAttendance=async(playerId)=>{
+if(!currentSession)return;
+const player=players.find(p=>p.id===playerId);
+if(!player)return alert('❌ No encontrado');
+if(currentSession.attendance.includes(playerId))return alert(`${player.name} ya registrado`);
+const updated={...currentSession,attendance:[...currentSession.attendance,playerId]};
+setCurrentSession(updated);
+await saveToScript('addAttendance',{id:Date.now().toString(),playerId,sessionId:currentSession.id,timestamp:new Date().toISOString(),status:'presente'});
+if(navigator.vibrate)navigator.vibrate(100);
+alert(`✓ ${player.name} (#${player.number})`);
+};
 
-          const markAttendance = async (playerId) => {
-            if (!currentSession) return;
-            const player = players.find(p => p.id === playerId);
-            if (!player) return alert('❌ Jugador no encontrado');
-            if (currentSession.attendance.includes(playerId)) return alert(`${player.name} ya registrado`);
-            const updated = { ...currentSession, attendance: [...currentSession.attendance, playerId] };
-            setCurrentSession(updated);
-            if (connected) {
-              await saveToSheet('Asistencias', [Date.now().toString(), playerId, currentSession.id, new Date().toISOString(), 'presente']);
-            }
-            if (navigator.vibrate) navigator.vibrate(100);
-            alert(`✓ ${player.name} (#${player.number})`);
-          };
+const endSession=async()=>{
+if(!currentSession?.attendance.length)return alert('❌ Sin asistencias');
+await saveToScript('addSession',{id:currentSession.id,date:currentSession.date,type:currentSession.type,location:currentSession.location,attendance:currentSession.attendance.join(','),notes:currentSession.notes});
+setSessions([...sessions,currentSession]);
+setCurrentSession(null);
+setSessionInfo({type:'Entrenamiento',location:'',notes:''});
+stopCamera();
+setView('menu');
+alert('✓ Sesión guardada');
+};
 
-          const endSession = async () => {
-            if (!currentSession?.attendance.length) return alert('❌ No hay asistencias');
-            if (connected) {
-              await saveToSheet('Sesiones', [
-                currentSession.id, currentSession.date, currentSession.type, 
-                currentSession.location, currentSession.attendance.join(','), currentSession.notes
-              ]);
-            }
-            setSessions([...sessions, currentSession]);
-            setCurrentSession(null);
-            setSessionInfo({ type: 'Entrenamiento', location: '', notes: '' });
-            stopCamera();
-            setView('menu');
-            alert('✓ Sesión guardada');
-          };
+const startCamera=async()=>{
+try{
+const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+if(videoRef.current){videoRef.current.srcObject=stream;streamRef.current=stream;setScanning(true);}
+}catch{alert('❌ Error con cámara');}
+};
 
-          const startCamera = async () => {
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-              if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                streamRef.current = stream;
-                setScanning(true);
-              }
-            } catch {
-              alert('❌ Error con la cámara. Usa entrada manual.');
-            }
-          };
+const stopCamera=()=>{
+if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());streamRef.current=null;}
+setScanning(false);
+};
 
-          const stopCamera = () => {
-            if (streamRef.current) {
-              streamRef.current.getTracks().forEach(t => t.stop());
-              streamRef.current = null;
-            }
-            setScanning(false);
-          };
+const getStats=(id)=>{
+const attended=sessions.filter(s=>s.attendance.includes(id)).length;
+const total=sessions.length;
+return{attended,total,percentage:total?Math.round((attended/total)*100):0};
+};
 
-          const getStats = (id) => {
-            const attended = sessions.filter(s => s.attendance.includes(id)).length;
-            const total = sessions.length;
-            return { attended, total, percentage: total ? Math.round((attended/total)*100) : 0 };
-          };
+return h('div',{className:'min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4'},
+h('div',{className:'max-w-4xl mx-auto'},
+h('div',{className:'bg-white rounded-2xl shadow-2xl overflow-hidden'},
+h('div',{className:'bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white'},
+h('div',{className:'flex justify-between items-start'},
+h('div',null,h('h1',{className:'text-3xl font-bold'},'🏀 Asistencia Basketball'),h('p',{className:'text-orange-100 mt-1'},'Con Google Sheets + Apps Script')),
+h('button',{onClick:()=>setShowConfig(!showConfig),className:'bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg'},connected?'📡 Conectado':'⚙️ Config'))),
 
-          return h('div', { className: 'min-h-screen bg-gradient-to-br from-orange-500 to-red-600 p-4' },
-            h('div', { className: 'max-w-4xl mx-auto' },
-              h('div', { className: 'bg-white rounded-2xl shadow-2xl overflow-hidden' },
-                
-                h('div', { className: 'bg-gradient-to-r from-orange-600 to-red-600 p-6 text-white' },
-                  h('div', { className: 'flex justify-between items-start' },
-                    h('div', null,
-                      h('h1', { className: 'text-3xl font-bold' }, '🏀 Asistencia Basketball'),
-                      h('p', { className: 'text-orange-100 mt-1' }, 'Sistema integrado con Google Sheets')
-                    ),
-                    h('button', { 
-                      onClick: () => setShowConfig(!showConfig),
-                      className: 'bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg'
-                    }, connected ? '📡 Conectado' : '⚙️ Config')
-                  )
-                ),
+showConfig&&h('div',{className:'bg-yellow-50 p-6 border-b-4 border-yellow-400'},
+h('h3',{className:'font-bold mb-3'},'⚙️ Configuración'),
+h('input',{type:'text',value:config.sheetId,onChange:(e)=>setConfig({...config,sheetId:e.target.value}),placeholder:'Sheet ID',className:'w-full p-2 border rounded mb-2'}),
+h('input',{type:'text',value:config.apiKey,onChange:(e)=>setConfig({...config,apiKey:e.target.value}),placeholder:'API Key',className:'w-full p-2 border rounded mb-2'}),
+h('input',{type:'text',value:config.scriptUrl,onChange:(e)=>setConfig({...config,scriptUrl:e.target.value}),placeholder:'Script URL',className:'w-full p-2 border rounded mb-2'}),
+h('button',{onClick:()=>{if(!config.sheetId||!config.apiKey||!config.scriptUrl)return alert('❌ Completa campos');localStorage.setItem('bb_config',JSON.stringify(config));loadFromSheets(config);setShowConfig(false);},className:'w-full bg-green-600 text-white p-2 rounded hover:bg-green-700'},'Guardar')),
 
-                showConfig && h('div', { className: 'bg-yellow-50 p-6 border-b-4 border-yellow-400' },
-                  h('h3', { className: 'font-bold mb-3' }, '⚙️ Configuración Google Sheets'),
-                  h('input', { 
-                    type: 'text', 
-                    value: config.sheetId,
-                    onChange: (e) => setConfig({...config, sheetId: e.target.value}),
-                    placeholder: 'Sheet ID',
-                    className: 'w-full p-2 border rounded mb-2'
-                  }),
-                  h('input', { 
-                    type: 'text',
-                    value: config.apiKey,
-                    onChange: (e) => setConfig({...config, apiKey: e.target.value}),
-                    placeholder: 'API Key',
-                    className: 'w-full p-2 border rounded mb-2'
-                  }),
-                  h('button', {
-                    onClick: () => {
-                      localStorage.setItem('bb_config', JSON.stringify(config));
-                      loadFromSheets(config);
-                      setShowConfig(false);
-                    },
-                    className: 'w-full bg-green-600 text-white p-2 rounded hover:bg-green-700'
-                  }, 'Guardar'),
-                  h('p', { className: 'text-xs text-gray-600 mt-2' }, 'Crea 3 hojas: "Jugadores", "Sesiones" y "Asistencias"')
-                ),
+loading&&h('div',{className:'bg-blue-50 p-4 text-center'},'Cargando...'),
 
-                loading && h('div', { className: 'bg-blue-50 p-4 text-center' }, 'Cargando datos...'),
+view==='menu'&&h('div',{className:'p-6'},
+h('div',{className:'grid grid-cols-2 gap-4 mb-4'},
+h('button',{onClick:()=>setView('players'),className:'p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl flex flex-col items-center gap-2'},h('div',{className:'text-4xl'},'👥'),h('span',{className:'font-semibold'},'Jugadores'),h('span',{className:'text-sm'},players.length)),
+h('button',{onClick:()=>setView('session-setup'),className:'p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl flex flex-col items-center gap-2'},h('div',{className:'text-4xl'},'📸'),h('span',{className:'font-semibold'},'Asistencia')),
+h('button',{onClick:()=>setView('qrcodes'),className:'p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl flex flex-col items-center gap-2'},h('div',{className:'text-4xl'},'📱'),h('span',{className:'font-semibold'},'Códigos QR')),
+h('button',{onClick:()=>setView('history'),className:'p-6 bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex flex-col items-center gap-2'},h('div',{className:'text-4xl'},'📋'),h('span',{className:'font-semibold'},'Historial'),h('span',{className:'text-sm'},sessions.length))),
+h('button',{onClick:()=>setView('stats'),className:'w-full p-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg'},'📊 Estadísticas')),
 
-                view === 'menu' && h('div', { className: 'p-6' },
-                  h('div', { className: 'grid grid-cols-2 gap-4 mb-4' },
-                    h('button', {
-                      onClick: () => setView('players'),
-                      className: 'p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl flex flex-col items-center gap-2'
-                    },
-                      h('div', { className: 'text-4xl' }, '👥'),
-                      h('span', { className: 'font-semibold' }, 'Jugadores'),
-                      h('span', { className: 'text-sm' }, players.length)
-                    ),
-                    h('button', {
-                      onClick: () => setView('session-setup'),
-                      className: 'p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl flex flex-col items-center gap-2'
-                    },
-                      h('div', { className: 'text-4xl' }, '📸'),
-                      h('span', { className: 'font-semibold' }, 'Asistencia')
-                    ),
-                    h('button', {
-                      onClick: () => setView('qrcodes'),
-                      className: 'p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl flex flex-col items-center gap-2'
-                    },
-                      h('div', { className: 'text-4xl' }, '📱'),
-                      h('span', { className: 'font-semibold' }, 'Códigos QR')
-                    ),
-                    h('button', {
-                      onClick: () => setView('history'),
-                      className: 'p-6 bg-amber-500 hover:bg-amber-600 text-white rounded-xl flex flex-col items-center gap-2'
-                    },
-                      h('div', { className: 'text-4xl' }, '📋'),
-                      h('span', { className: 'font-semibold' }, 'Historial'),
-                      h('span', { className: 'text-sm' }, sessions.length)
-                    )
-                  ),
-                  h('button', {
-                    onClick: () => setView('stats'),
-                    className: 'w-full p-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg'
-                  }, '📊 Estadísticas')
-                ),
+view==='players'&&h('div',{className:'p-6'},
+h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
+h('div',{className:'bg-blue-50 p-4 rounded-xl mb-4'},
+h('h2',{className:'font-bold mb-3'},'➕ Agregar Jugador'),
+h('input',{type:'text',placeholder:'Nombre *',value:newPlayer.name,onChange:(e)=>setNewPlayer({...newPlayer,name:e.target.value}),className:'w-full p-2 border rounded mb-2'}),
+h('div',{className:'grid grid-cols-2 gap-2 mb-2'},
+h('input',{type:'text',placeholder:'Número *',value:newPlayer.number,onChange:(e)=>setNewPlayer({...newPlayer,number:e.target.value}),className:'p-2 border rounded'}),
+h('input',{type:'text',placeholder:'Equipo',value:newPlayer.team,onChange:(e)=>setNewPlayer({...newPlayer,team:e.target.value}),className:'p-2 border rounded'})),
+h('input',{type:'text',placeholder:'Serie',value:newPlayer.serie,onChange:(e)=>setNewPlayer({...newPlayer,serie:e.target.value}),className:'w-full p-2 border rounded mb-2'}),
+h('div',{className:'grid grid-cols-2 gap-2 mb-2'},
+h('input',{type:'email',placeholder:'Email',value:newPlayer.email,onChange:(e)=>setNewPlayer({...newPlayer,email:e.target.value}),className:'p-2 border rounded'}),
+h('input',{type:'tel',placeholder:'Teléfono',value:newPlayer.phone,onChange:(e)=>setNewPlayer({...newPlayer,phone:e.target.value}),className:'p-2 border rounded'})),
+h('button',{onClick:addPlayer,className:'w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700'},'Agregar')),
+h('div',{className:'space-y-2'},
+players.length===0?h('div',{className:'text-center py-12 text-gray-500'},'No hay jugadores'):
+players.map(p=>{const stats=getStats(p.id);return h('div',{key:p.id,className:'p-3 bg-gray-50 rounded-lg'},
+h('div',{className:'font-bold'},`#${p.number} - ${p.name}`),
+p.team&&h('div',{className:'text-sm text-gray-600'},`Equipo: ${p.team}`),
+p.serie&&h('div',{className:'text-sm text-gray-600'},`Serie: ${p.serie}`),
+p.email&&h('div',{className:'text-xs text-gray-500'},p.email),
+sessions.length>0&&h('div',{className:'text-xs text-gray-500 mt-1'},`${stats.attended}/${stats.total} (${stats.percentage}%)`)
+);}))),
 
-                view === 'players' && h('div', { className: 'p-6' },
-                  h('button', { onClick: () => setView('menu'), className: 'mb-4 text-blue-600' }, '← Volver'),
-                  h('div', { className: 'bg-blue-50 p-4 rounded-xl mb-4' },
-                    h('h2', { className: 'font-bold mb-3' }, '➕ Agregar Jugador'),
-                    h('input', { 
-                      type: 'text', 
-                      placeholder: 'Nombre *',
-                      value: newPlayer.name,
-                      onChange: (e) => setNewPlayer({...newPlayer, name: e.target.value}),
-                      className: 'w-full p-2 border rounded mb-2'
-                    }),
-                    h('div', { className: 'grid grid-cols-2 gap-2 mb-2' },
-                      h('input', { 
-                        type: 'text',
-                        placeholder: 'Número *',
-                        value: newPlayer.number,
-                        onChange: (e) => setNewPlayer({...newPlayer, number: e.target.value}),
-                        className: 'p-2 border rounded'
-                      }),
-                      h('input', { 
-                        type: 'text',
-                        placeholder: 'Equipo',
-                        value: newPlayer.team,
-                        onChange: (e) => setNewPlayer({...newPlayer, team: e.target.value}),
-                        className: 'p-2 border rounded'
-                      })
-                    ),
-                    h('input', { 
-                      type: 'text',
-                      placeholder: 'Serie',
-                      value: newPlayer.serie,
-                      onChange: (e) => setNewPlayer({...newPlayer, serie: e.target.value}),
-                      className: 'w-full p-2 border rounded mb-2'
-                    }),
-                    h('div', { className: 'grid grid-cols-2 gap-2 mb-2' },
-                      h('input', { 
-                        type: 'email',
-                        placeholder: 'Email',
-                        value: newPlayer.email,
-                        onChange: (e) => setNewPlayer({...newPlayer, email: e.target.value}),
-                        className: 'p-2 border rounded'
-                      }),
-                      h('input', { 
-                        type: 'tel',
-                        placeholder: 'Teléfono',
-                        value: newPlayer.phone,
-                        onChange: (e) => setNewPlayer({...newPlayer, phone: e.target.value}),
-                        className: 'p-2 border rounded'
-                      })
-                    ),
-                    h('button', {
-                      onClick: addPlayer,
-                      className: 'w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700'
-                    }, 'Agregar')
-                  ),
-                  h('div', { className: 'space-y-2' },
-                    players.length === 0 ? 
-                      h('div', { className: 'text-center py-12 text-gray-500' }, 'No hay jugadores') :
-                      players.map(p => {
-                        const stats = getStats(p.id);
-                        return h('div', { key: p.id, className: 'p-3 bg-gray-50 rounded-lg' },
-                          h('div', { className: 'font-bold' }, `#${p.number} - ${p.name}`),
-                          p.team && h('div', { className: 'text-sm text-gray-600' }, `Equipo: ${p.team}`),
-                          p.serie && h('div', { className: 'text-sm text-gray-600' }, `Serie: ${p.serie}`),
-                          p.email && h('div', { className: 'text-xs text-gray-500' }, p.email),
-                          sessions.length > 0 && h('div', { className: 'text-xs text-gray-500 mt-1' }, 
-                            `Asistencia: ${stats.attended}/${stats.total} (${stats.percentage}%)`
-                          )
-                        );
-                      })
-                  )
-                ),
+view==='session-setup'&&h('div',{className:'p-6'},
+h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
+h('div',{className:'bg-green-50 p-6 rounded-xl'},
+h('h2',{className:'text-xl font-bold mb-4'},'📋 Configurar Sesión'),
+h('select',{value:sessionInfo.type,onChange:(e)=>setSessionInfo({...sessionInfo,type:e.target.value}),className:'w-full p-3 border rounded mb-3'},
+h('option',null,'Entrenamiento'),h('option',null,'Partido'),h('option',null,'Amistoso'),h('option',null,'Torneo')),
+h('input',{type:'text',value:sessionInfo.location,onChange:(e)=>setSessionInfo({...sessionInfo,location:e.target.value}),placeholder:'Ubicación',className:'w-full p-3 border rounded mb-3'}),
+h('textarea',{value:sessionInfo.notes,onChange:(e)=>setSessionInfo({...sessionInfo,notes:e.target.value}),placeholder:'Notas',className:'w-full p-3 border rounded mb-3',rows:2}),
+h('button',{onClick:startSession,className:'w-full bg-green-600 text-white p-4 rounded-lg font-bold hover:bg-green-700'},'🎯 Iniciar'))),
 
-                view === 'session-setup' && h('div', { className: 'p-6' },
-                  h('button', { onClick: () => setView('menu'), className: 'mb-4 text-blue-600' }, '← Volver'),
-                  h('div', { className: 'bg-green-50 p-6 rounded-xl' },
-                    h('h2', { className: 'text-xl font-bold mb-4' }, '📋 Configurar Sesión'),
-                    h('select', {
-                      value: sessionInfo.type,
-                      onChange: (e) => setSessionInfo({...sessionInfo, type: e.target.value}),
-                      className: 'w-full p-3 border rounded mb-3'
-                    },
-                      h('option', null, 'Entrenamiento'),
-                      h('option', null, 'Partido'),
-                      h('option', null, 'Amistoso'),
-                      h('option', null, 'Torneo')
-                    ),
-                    h('input', {
-                      type: 'text',
-                      value: sessionInfo.location,
-                      onChange: (e) => setSessionInfo({...sessionInfo, location: e.target.value}),
-                      placeholder: 'Ubicación (opcional)',
-                      className: 'w-full p-3 border rounded mb-3'
-                    }),
-                    h('textarea', {
-                      value: sessionInfo.notes,
-                      onChange: (e) => setSessionInfo({...sessionInfo, notes: e.target.value}),
-                      placeholder: 'Notas (opcional)',
-                      className: 'w-full p-3 border rounded mb-3',
-                      rows: 2
-                    }),
-                    h('button', {
-                      onClick: startSession,
-                      className: 'w-full bg-green-600 text-white p-4 rounded-lg font-bold hover:bg-green-700'
-                    }, '🎯 Iniciar Toma de Asistencia')
-                  )
-                ),
+view==='scanner'&&h('div',{className:'p-6'},
+h('div',{className:'flex justify-between mb-4'},
+h('button',{onClick:()=>{stopCamera();setView('menu');},className:'text-red-600 font-semibold'},'✕ Cancelar'),
+h('button',{onClick:endSession,className:'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'},'Finalizar')),
+h('div',{className:'bg-green-50 p-4 rounded-xl mb-4 border-2 border-green-200'},
+h('div',{className:'font-bold text-lg mb-1'},currentSession?.type),
+currentSession?.location&&h('div',{className:'text-sm text-gray-700'},`📍 ${currentSession.location}`),
+h('div',{className:'text-3xl font-bold text-green-600 mt-2'},`${currentSession?.attendance.length||0} / ${players.length}`)),
+h('div',{className:'space-y-3 mb-4'},
+h('button',{onClick:startCamera,disabled:scanning,className:'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'},scanning?'Escaneando...':'📸 Iniciar Escáner'),
+h('button',{onClick:()=>{const num=prompt('Número:');if(!num)return;const p=players.find(p=>p.number===num.trim());if(p)markAttendance(p.id);else alert('❌ No encontrado');},className:'w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700'},'⌨️ Entrada Manual')),
+scanning&&h('div',{className:'relative mb-4'},h('video',{ref:videoRef,autoPlay:true,playsInline:true,className:'w-full rounded-xl border-4 border-green-500'})),
+h('div',{className:'mt-4'},h('h3',{className:'font-semibold mb-2 text-lg'},'✓ Presentes:'),
+currentSession?.attendance.length===0?h('p',{className:'text-center py-6 text-gray-500'},'Sin registros'):
+h('div',{className:'space-y-2'},currentSession?.attendance.map(id=>{const p=players.find(p=>p.id===id);return p&&h('div',{key:id,className:'p-3 bg-green-50 rounded-lg border-l-4 border-green-500'},h('div',{className:'font-semibold'},`#${p.number} - ${p.name}`),p.team&&h('div',{className:'text-sm text-gray-600'},p.team));})))),
 
-                view === 'scanner' && h('div', { className: 'p-6' },
-                  h('div', { className: 'flex justify-between mb-4' },
-                    h('button', {
-                      onClick: () => { stopCamera(); setView('menu'); },
-                      className: 'text-red-600 font-semibold'
-                    }, '✕ Cancelar'),
-                    h('button', {
-                      onClick: endSession,
-                      className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700'
-                    }, 'Finalizar')
-                  ),
-                  h('div', { className: 'bg-green-50 p-4 rounded-xl mb-4 border-2 border-green-200' },
-                    h('div', { className: 'font-bold text-lg mb-1' }, currentSession?.type),
-                    currentSession?.location && h('div', { className: 'text-sm text-gray-700' }, 
-                      `📍 ${currentSession.location}`
-                    ),
-                    h('div', { className: 'text-3xl font-bold text-green-600 mt-2' },
-                      `${currentSession?.attendance.length || 0} / ${players.length}`
-                    )
-                  ),
-                  h('div', { className: 'space-y-3 mb-4' },
-                    h('button', {
-                      onClick: startCamera,
-                      disabled: scanning,
-                      className: 'w-full bg-blue-600 text-white p-4 rounded-xl hover:bg-blue-700 disabled:opacity-50'
-                    }, scanning ? 'Escaneando...' : '📸 Iniciar Escáner QR'),
-                    h('button', {
-                      onClick: () => {
-                        const num = prompt('Ingresa el número del jugador:');
-                        if (!num) return;
-                        const p = players.find(p => p.number === num.trim());
-                        if (p) markAttendance(p.id);
-                        else alert('❌ Jugador no encontrado');
-                      },
-                      className: 'w-full bg-purple-600 text-white p-4 rounded-xl hover:bg-purple-700'
-                    }, '⌨️ Entrada Manual')
-                  ),
-                  scanning && h('div', { className: 'relative mb-4' },
-                    h('video', {
-                      ref: videoRef,
-                      autoPlay: true,
-                      playsInline: true,
-                      className: 'w-full rounded-xl border-4 border-green-500'
-                    })
-                  ),
-                  h('div', { className: 'mt-4' },
-                    h('h3', { className: 'font-semibold mb-2 text-lg' }, '✓ Presentes:'),
-                    currentSession?.attendance.length === 0 ?
-                      h('p', { className: 'text-center py-6 text-gray-500' }, 'Aún no hay registros') :
-                      h('div', { className: 'space-y-2' },
-                        currentSession?.attendance.map(id => {
-                          const p = players.find(p => p.id === id);
-                          return p && h('div', { key: id, className: 'p-3 bg-green-50 rounded-lg border-l-4 border-green-500' },
-                            h('div', { className: 'font-semibold' }, `#${p.number} - ${p.name}`),
-                            p.team && h('div', { className: 'text-sm text-gray-600' }, p.team)
-                          );
-                        })
-                      )
-                  )
-                ),
+view==='qrcodes'&&h('div',{className:'p-6'},
+h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
+players.length>0&&h('button',{onClick:()=>{players.forEach((p,i)=>{setTimeout(()=>{const a=document.createElement('a');a.href=`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`;a.download=`QR_${p.number}_${p.name.replace(/\s/g,'_')}.png`;a.click();},i*500);});alert(`📥 Descargando ${players.length} QR...`);},className:'w-full mb-4 bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700'},`⬇️ Descargar Todos (${players.length})`),
+players.length===0?h('div',{className:'text-center py-12 text-gray-500'},'No hay jugadores'):
+h('div',{className:'grid grid-cols-2 md:grid-cols-3 gap-4'},players.map(p=>h('div',{key:p.id,className:'border-2 rounded-xl p-4 text-center bg-white shadow'},h('img',{src:`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`,alt:p.name,className:'w-full rounded mb-2'}),h('div',{className:'font-bold'},`#${p.number}`),h('div',{className:'text-sm'},p.name),p.serie&&h('div',{className:'text-xs text-gray-500'},`Serie: ${p.serie}`))))),
 
-                view === 'qrcodes' && h('div', { className: 'p-6' },
-                  h('button', { onClick: () => setView('menu'), className: 'mb-4 text-blue-600' }, '← Volver'),
-                  players.length > 0 && h('button', {
-                    onClick: () => {
-                      players.forEach((p, i) => {
-                        setTimeout(() => {
-                          const a = document.createElement('a');
-                          a.href = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`;
-                          a.download = `QR_${p.number}_${p.name.replace(/\s/g, '_')}.png`;
-                          a.click();
-                        }, i * 500);
-                      });
-                      alert(`📥 Descargando ${players.length} códigos QR...`);
-                    },
-                    className: 'w-full mb-4 bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700'
-                  }, `⬇️ Descargar Todos (${players.length})`),
-                  players.length === 0 ?
-                    h('div', { className: 'text-center py-12 text-gray-500' }, 'No hay jugadores') :
-                    h('div', { className: 'grid grid-cols-2 md:grid-cols-3 gap-4' },
-                      players.map(p =>
-                        h('div', { key: p.id, className: 'border-2 rounded-xl p-4 text-center bg-white shadow' },
-                          h('img', {
-                            src: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=BB_${p.id}`,
-                            alt: p.name,
-                            className: 'w-full rounded mb-2'
-                          }),
-                          h('div', { className: 'font-bold' }, `#${p.number}`),
-                          h('div', { className: 'text-sm' }, p.name),
-                          p.serie && h('div', { className: 'text-xs text-gray-500' }, `Serie: ${p.serie}`)
-                        )
-                      )
-                    )
-                ),
+view==='history'&&h('div',{className:'p-6'},
+h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
+sessions.length===0?h('div',{className:'text-center py-12 text-gray-500'},'No hay sesiones'):
+h('div',{className:'space-y-3'},sessions.slice().reverse().map(s=>h('div',{key:s.id,className:'border-2 rounded-xl p-4 bg-gray-50'},h('div',{className:'flex justify-between items-start mb-2'},h('div',null,h('div',{className:'font-bold'},new Date(s.date).toLocaleDateString('es')),h('span',{className:'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs'},s.type),s.location&&h('div',{className:'text-sm text-gray-600 mt-1'},`📍 ${s.location}`)),h('div',{className:'text-2xl font-bold text-green-600'},s.attendance.length)),h('div',{className:'flex flex-wrap gap-2 mt-2'},s.attendance.map(id=>{const p=players.find(p=>p.id===id);return p&&h('span',{key:id,className:'bg-green-100 px-2 py-1 rounded text-xs'},`#${p.number}`);})))))),
 
-                view === 'history' && h('div', { className: 'p-6' },
-                  h('button', { onClick: () => setView('menu'), className: 'mb-4 text-blue-600' }, '← Volver'),
-                  sessions.length === 0 ?
-                    h('div', { className: 'text-center py-12 text-gray-500' }, 'No hay sesiones') :
-                    h('div', { className: 'space-y-3' },
-                      sessions.slice().reverse().map(s =>
-                        h('div', { key: s.id, className: 'border-2 rounded-xl p-4 bg-gray-50' },
-                          h('div', { className: 'flex justify-between items-start mb-2' },
-                            h('div', null,
-                              h('div', { className: 'font-bold' }, new Date(s.date).toLocaleDateString('es')),
-                              h('span', { className: 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs' }, s.type),
-                              s.location && h('div', { className: 'text-sm text-gray-600 mt-1' }, `📍 ${s.location}`)
-                            ),
-                            h('div', { className: 'text-2xl font-bold text-green-600' }, s.attendance.length)
-                          ),
-                          h('div', { className: 'flex flex-wrap gap-2 mt-2' },
-                            s.attendance.map(id => {
-                              const p = players.find(p => p.id === id);
-                              return p && h('span', { key: id, className: 'bg-green-100 px-2 py-1 rounded text-xs' }, 
-                                `#${p.number}`
-                              );
-                            })
-                          )
-                        )
-                      )
-                    )
-                ),
-
-                view === 'stats' && h('div', { className: 'p-6' },
-                  h('button', { onClick: () => setView('menu'), className: 'mb-4 text-blue-600' }, '← Volver'),
-                  h('h2', { className: 'text-2xl font-bold mb-4' }, '📊 Estadísticas'),
-                  sessions.length === 0 ?
-                    h('p', { className: 'text-center text-gray-500 py-12' }, 'No hay datos suficientes') :
-                    h('div', { className: 'space-y-3' },
-                      players.map(p => {
-                        const stats = getStats(p.id);
-                        return h('div', { key: p.id, className: 'border rounded-xl p-4 bg-gray-50' },
-                          h('div', { className: 'flex justify-between items-center mb-2' },
-                            h('div', null,
-                              h('div', { className: 'font-bold' }, `#${p.number} - ${p.name}`),
-                              p.serie && h('div', { className: 'text-xs text-gray-500' }, `Serie: ${p.serie}`)
-                            ),
-                            h('div', { className: 'text-right' },
-                              h('div', { className: 'text-2xl font-bold text-blue-600' }, `${stats.percentage}%`),
-                              h('div', { className: 'text-xs' }, `${stats.attended}/${stats.total}`)
-                            )
-                          ),
-                          h('div', { className: 'w-full bg-gray-200 rounded-full h-2' },
-                            h('div', {
-                              className: 'bg-blue-600 h-2 rounded-full',
-                              style: { width: `${stats.percentage}%` }
-                            })
-                          )
-                        );
-                      })
-                    )
-                )
-              )
-            )
-          );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+view==='stats'&&h('div',{className:'p-6'},
+h('button',{onClick:()=>setView('menu'),className:'mb-4 text-blue-600'},'← Volver'),
+h('h2',{className:'text-2xl font-bold mb-4'},'📊 Estadísticas'),
+sessions.length===0?h('p',{className:'text-center text-gray-500 py-12'},'Sin datos'):
+h('div',{className:'space-y-3'},players.map(p=>{const stats=getStats(p.id);return h('div',{key:p.id,className:'border rounded-xl p-4 bg-gray-50'},h('div',{className:'flex justify-between items-center mb-2'},h('div',null,h('div',{className:'font-bold'},`#${p.number} - ${p.name}`),p.serie&&h('div',{className:'text-xs text-gray-500'},`Serie: ${p.serie}`)),h('div',{className:'text-right'},h('div',{className:'text-2xl font-bold text-blue-600'},`${stats.percentage}%`),h('div',{className:'text-xs'},`${stats.attended}/${stats.total}`))),h('div',{className:'w-full bg-gray-200 rounded-full h-2'},h('div',{className:'bg-blue-600 h-2 rounded-full',style:{width:`${stats.percentage}%`}})));})))
+)));
+};
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
     </script>
 </body>
 </html>
