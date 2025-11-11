@@ -319,27 +319,35 @@
             if (code) {
                 console.log('QR detectado:', code.data);
                 
-                // Vibración si está disponible
+                // SEÑALES DE ÉXITO
+                // 1. Vibración triple
                 if (navigator.vibrate) {
-                    navigator.vibrate(200);
+                    navigator.vibrate([200, 100, 200]);
                 }
+
+                // 2. Sonido de éxito (beep)
+                playSuccessSound();
+
+                // 3. Flash verde en la pantalla
+                showFlash();
 
                 // Verificar si es un código de la app
                 if (code.data.startsWith('BB_')) {
                     const playerId = code.data.replace('BB_', '');
-                    showResult(`✅ Código válido detectado!\n\nJugador ID: ${playerId}\n\nDatos: ${code.data}`, 'success');
+                    showResult(`✅ ¡ESCANEADO!\n\nJugador ID: ${playerId}\n\n✓ Listo para el siguiente`, 'success');
                 } else {
                     showResult(`ℹ️ QR detectado!\n\nContenido: ${code.data}\n\n(No es un código de jugador de la app)`, 'info');
                 }
 
-                // Pausar escaneo por 3 segundos
+                // Pausar solo 1.5 segundos para escanear el siguiente rápido
                 clearInterval(scanInterval);
                 setTimeout(() => {
                     if (isScanning) {
                         scanInterval = setInterval(scanQR, 100);
                         document.getElementById('result').innerHTML = '';
+                        document.getElementById('status').innerHTML = '📸 Listo para el siguiente...';
                     }
-                }, 3000);
+                }, 1500);
             }
         }
 
